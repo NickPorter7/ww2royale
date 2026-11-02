@@ -137,3 +137,11 @@ An additional offline Chromium interaction test (`tools/offline-browser-smoke.py
 ## Version 1.10.3: original background restored
 
 Removed repeating ocean fill beyond the map boundaries and restored the original flat background (`#092632`) from version 1.10.1. Map provinces, regional names, and gameplay remain unchanged.
+
+
+## Release 1.11: Moving-army display
+
+- Animated army badges now move continuously along the arrows with troop counts, instead of only having stationary province counters.
+- Movement interpolation uses a monotonic server-synchronized clock.
+- Mixed armies still travel at the slowest included unit speed: infantry 10 s, tanks 20 s, bombers 7 s per province.
+- All existing map/terrain and gameplay rules remain unchanged.

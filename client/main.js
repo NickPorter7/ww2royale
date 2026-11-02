@@ -69,6 +69,9 @@ async function copyRoomCode(){
 let toastTimeout;
 const camera = {zoom:1,panX:0,panY:0,scale:1,tx:0,ty:0,cw:0,ch:0};
 let renderPending = false;
+// Compare incoming order times with a monotonic clock synchronized to the server.
+let gameClockServerAt = 0, gameClockClientAt = 0;
+function gameNow(){ return gameClockServerAt ? gameClockServerAt+(performance.now()-gameClockClientAt) : Date.now(); }
 const ownerMap = new Map();
 
 function notice(text){
@@ -343,7 +346,7 @@ function orderPosition(order,now){
 }
 function drawMovements(){
   if(!game?.movements?.length)return;
-  const now=Date.now();ctx.save();ctx.lineJoin='round';ctx.lineCap='round';
+  const now=gameNow();ctx.save();ctx.lineJoin='round';ctx.lineCap='round';
   for(const order of game.movements){
     const info=orderPosition(order,now);if(!info)continue;
     const {pts,i,x,y}=info;
@@ -357,6 +360,14 @@ function drawMovements(){
     ctx.save();ctx.translate(x,y);ctx.rotate(theta);
     ctx.beginPath();ctx.moveTo(12,0);ctx.lineTo(-9,-7);ctx.lineTo(-4,0);ctx.lineTo(-9,7);ctx.closePath();
     ctx.fillStyle=tint;ctx.strokeStyle='#18232a';ctx.lineWidth=2.4;ctx.fill();ctx.stroke();ctx.restore();
+    // Animated army counter rides with the arrow instead of sitting at its source.
+    const movingCount=unitTotal(order.units||{[order.type]:order.count});
+    const token=String(movingCount);
+    const badgeW=Math.max(25,ctx.measureText(token).width+14);
+    ctx.font='800 12px Inter,Arial,sans-serif';
+    ctx.fillStyle='rgba(7,18,26,.96)';ctx.strokeStyle=tint;ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.roundRect(x-badgeW/2,y+10,badgeW,22,7);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#ffffff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(token,x,y+21);
     const label=`${armyDescription(order)} · ${fmtSeconds((order.arrivalAt-now)/1000)}`;
     ctx.font='700 13px Inter,Arial,sans-serif';const w=ctx.measureText(label).width+16;
     ctx.fillStyle='rgba(9,21,27,.92)';ctx.strokeStyle=tint;ctx.lineWidth=1;
@@ -941,6 +952,8 @@ socket.on('state',next=>{
   const requestKey=[...(next.requests||[]),...(next.peaceRequests||[])].filter(r=>r.to===assigned).map(r=>r.from+':'+r.to).sort().join('|');
   if(lastRequestsSeen!==''&&requestKey!==lastRequestsSeen&&requestKey&&activePanel!=='diplomacy')$('diplomacyBadge').hidden=false;
   lastRequestsSeen=requestKey;
+  // Capture a synchronized frame anchor on every authoritative update.
+  if(Number.isFinite(next.serverTime)){gameClockServerAt=next.serverTime;gameClockClientAt=performance.now();}
   game=next;
   if(!$('nationModal').hidden)renderNationChoices();
   $('publicWaiting').hidden=!(next.public&&!next.started);
@@ -958,7 +971,7 @@ socket.on('joinError',msg=>{showJoinError(String(msg));$('joinModal').hidden=fal
 socket.on('orderAccepted',o=>notice(`Army dispatched · ETA ${fmtSeconds((o.arrivalAt-Date.now())/1000)}`));
 socket.on('leftRoom',()=>{room=null;assigned=null;game=null;paintKey='';isPublicMatch=false;selected=null;draftTarget=null;actionMode=null;redirectOrderId=null;redirectTarget=null;$('publicWaiting').hidden=true;$('joinModal').hidden=false;updateSidebar();queueRender();});
 setInterval(()=>{
-  for(const el of document.querySelectorAll('.order-remaining'))el.textContent=fmtSeconds((Number(el.dataset.arrival)-Date.now())/1000);
+  for(const el of document.querySelectorAll('.order-remaining'))el.textContent=fmtSeconds((Number(el.dataset.arrival)-gameNow())/1000);
   // polling UI for money and timers: state updates from server every 100 ms or from game timer
 },250);
 (async function init(){
