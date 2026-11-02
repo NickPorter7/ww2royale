@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b151c"><title>WW2 Royale | Command Europe</title>
+  <link rel="stylesheet" href="/style.css"><script defer src="/main.js"></script>
+</head>
+<body>
+<!-- Lightweight inline icons keep the game fully playable offline. -->
+<svg class="svg-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
+  <symbol id="ico-map" viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Zm6-3v15m6-12v15"/></symbol>
+  <symbol id="ico-diplomacy" viewBox="0 0 24 24"><path d="m2 12 5-4 4 3 2-1 4 3 5-3M2 12l5 5 4-3 2 2 4-3 5-3M7 8l3-3 4 1 3 4M7 17l-3 3m14-7 3 4"/></symbol>
+  <symbol id="ico-chat" viewBox="0 0 24 24"><path d="M21 11.5a8.3 8.3 0 0 1-8.5 8.5 8.8 8.8 0 0 1-4-.9L3 21l1.5-5.2A8.4 8.4 0 0 1 3 11.5 9 9 0 0 1 12 3a9 9 0 0 1 9 8.5Z"/><path d="M8 11.5h8m-8 4h5"/></symbol>
+  <symbol id="ico-orders" viewBox="0 0 24 24"><path d="m6 3 3 3-3 3M9 6H4m14 15-3-3 3-3m-3 3h5M9 18h2a3 3 0 0 0 3-3V9a3 3 0 0 1 3-3h3"/></symbol>
+  <symbol id="ico-ranking" viewBox="0 0 24 24"><path d="M7 21h10M12 17v4M5 3h14v7a7 7 0 0 1-14 0V3Zm0 3H2v2a5 5 0 0 0 4 5m13-7h3v2a5 5 0 0 1-4 5"/></symbol>
+  <symbol id="ico-log" viewBox="0 0 24 24"><path d="M8 3h12v18H8a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4Zm0 0v14H4m7-9h6m-6 4h6"/></symbol>
+  <symbol id="ico-settings" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16M9 4v6m6 4v6"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="17" r="2"/></symbol>
+  <symbol id="ico-coins" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15 8c-1-.8-5-1-6.1 1C7 12 16 11 15 15c-.6 2.2-4.5 2.2-6 1m3-11v14"/></symbol>
+  <symbol id="ico-close" viewBox="0 0 24 24"><path d="M5 5 19 19M19 5 5 19"/></symbol>
+  <symbol id="ico-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+  <symbol id="ico-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2H3Zm12-15a3 3 0 0 1 0 6m2 3a5 5 0 0 1 4 5v1h-4"/></symbol>
+  <symbol id="ico-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="ico-alert" viewBox="0 0 24 24"><path d="M12 3 2 21h20L12 3Zm0 6v5m0 4v.2"/></symbol>
+  <symbol id="ico-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></symbol>
+
+  <symbol id="ico-tank" viewBox="0 0 24 24"><path d="M2 16h20l-2 4H4l-2-4Zm3-6h14l2 6H3l2-6Zm5 0V7h5l2 3M12 7V5h6m-13 8h14M7 20h2m6 0h2"/></symbol>
+  <symbol id="ico-quick-move" viewBox="0 0 24 24"><path d="M3 18h5l3-4h4l6-9M15 5h6v6M3 7h7l3 3"/></symbol>
+  <symbol id="ico-quick-attack" viewBox="0 0 24 24"><path d="M4 4 20 20M20 4 4 20M4 4l1 7 6-6-7-1Zm16 0-7 1 6 6 1-7ZM4 20l7-1-6-6-1 7Zm16 0-1-7-6 6 7 1Z"/></symbol>
+  <symbol id="ico-quick-build" viewBox="0 0 24 24"><path d="M4 21h16M7 21V5l5-3 5 3v16M10 8h1m3 0h1m-5 4h1m3 0h1m-5 4h1m3 0h1"/></symbol>
+  <symbol id="ico-barracks" viewBox="0 0 24 24"><path d="M3 21h18M5 21V8h14v13M3 8l9-5 9 5M9 21v-7h6v7M12 3V1m-5 10h2m6 0h2"/></symbol>
+  <symbol id="ico-autoshop" viewBox="0 0 24 24"><path d="M3 21V9l5 3V9l5 3V5h8v16H3Zm10-16V2h5v3M5 17h3m3 0h3m3 0h2"/></symbol>
+  <symbol id="ico-airport" viewBox="0 0 24 24"><path d="M22 10 13 13 7 4l-2 1 3 10-5 3 2 2 7-3 5 4 2-1-3-6 6-2z"/></symbol>
+  <symbol id="ico-bank" viewBox="0 0 24 24"><path d="m2 9 10-6 10 6H2ZM4 21h16M3 18h18M6 9v9m4-9v9m4-9v9m4-9v9"/></symbol>
+  <symbol id="ico-fort" viewBox="0 0 24 24"><path d="m12 2 9 4v6c0 5-4 8-9 10-5-2-9-5-9-10V6l9-4Zm-4 10 3 3 5-6"/></symbol>
+</defs></svg>
+<header class="topbar">
+  <div class="brand"><span class="brand-seal">✦</span><div><div class="brand-main">WW2 <span>ROYALE</span></div><div class="brand-sub">THE EUROPEAN CAMPAIGN</div></div></div>
+  <div class="header-center"><span class="era-dot"></span><span class="campaign-title">EUROPE · <strong id="campaignDate">6 OCT 1939</strong></span><span class="topbar-divider"></span><div class="connection"><span id="connectionDot" class="dot"></span><span id="connectionText">Connecting…</span></div></div>
+  <div class="header-right">
+    <div class="hud-stat"><span class="hud-stat-label">TREASURY</span><strong id="moneyValue">—</strong></div>
+    <div class="hud-stat"><span class="hud-stat-label">WORLD RANK</span><strong id="placementValue">—</strong></div>
+    <div class="server-strip"><span class="server-strip-label">PRIVATE ROOM</span><span class="room-value" id="roomCode">—— ——</span><button id="copyRoom" class="icon-mini" title="Copy room code" aria-label="Copy room code"><svg><use href="#ico-copy"/></svg></button></div>
+    <button id="roomButton" class="header-button">Rooms</button>
+  </div>
+</header>
+<main class="layout">
+  <section id="mapContainer" class="map-section" aria-label="Interactive conquest map">
+    <canvas id="mapCanvas" aria-label="Interactive map of Europe"></canvas>
+    <nav class="tool-rail" aria-label="Game menus">
+      <div class="rail-top"><span class="rail-caption">COMMAND</span></div>
+      <button class="rail-btn" data-panel="army" id="navProvince" title="Army command" aria-label="Open army command" aria-pressed="false"><svg><use href="#ico-map"/></svg><span>Army</span></button>
+      <button class="rail-btn" data-panel="buildings" id="navBuildings" title="Province buildings" aria-label="Open province buildings" aria-pressed="false"><svg><use href="#ico-quick-build"/></svg><span>Buildings</span></button>
+      <button class="rail-btn" data-panel="diplomacy" id="navDiplomacy" title="Diplomacy and alliances" aria-label="Open diplomacy" aria-pressed="false"><svg><use href="#ico-diplomacy"/></svg><span>Diplomacy</span><i id="diplomacyBadge" class="menu-badge" hidden>!</i></button>
+      <button class="rail-btn" data-panel="chat" id="navChat" title="Global and private chat" aria-label="Open chat" aria-pressed="false"><svg><use href="#ico-chat"/></svg><span>Messages</span><i id="chatBadge" class="menu-badge" hidden>!</i></button>
+      <button class="rail-btn" data-panel="orders" title="Moving armies" aria-label="Open army movements" aria-pressed="false"><svg><use href="#ico-orders"/></svg><span>Orders</span></button>
+      <button class="rail-btn" data-panel="rankings" title="World rankings" aria-label="Open rankings" aria-pressed="false"><svg><use href="#ico-ranking"/></svg><span>Rankings</span></button>
+      <button class="rail-btn" data-panel="reports" title="War dispatches" aria-label="Open war dispatches" aria-pressed="false"><svg><use href="#ico-log"/></svg><span>Reports</span></button>
+      <span class="rail-spacer"></span>
+      <button class="rail-btn" data-panel="settings" title="Map and visibility settings" aria-label="Open settings" aria-pressed="false"><svg><use href="#ico-settings"/></svg><span>Settings</span></button>
+    </nav>
+    <div id="floatingPanel" class="floating-panel" hidden>
+      <div class="panel-head"><div><div class="eyebrow" id="panelEyebrow">HIGH COMMAND</div><h2 id="panelTitle">Province command</h2></div><button class="panel-close" id="panelClose" title="Close menu" aria-label="Close menu"><svg><use href="#ico-close"/></svg></button></div>
+      <div class="panel-scroll">
+        <section id="panel-army" class="panel-view" hidden>
+          <div id="selectionCard" hidden>
+            <div class="province-topline"><span class="eyebrow">SELECTED TERRITORY</span><span id="provinceStatus" class="status-pill">—</span></div>
+            <h3 id="selectionName" class="selection-name">—</h3><div id="selectionOwner" class="province-owner"></div>
+            <div id="selectionDetails" class="detail-content"></div>
+            <div id="provinceDiplomacy" class="detail-content" hidden></div>
+
+
+          </div>
+          <div id="emptyProvince" class="empty-state"><svg><use href="#ico-target"/></svg><h3>No province selected</h3><p>Select any province on the map to inspect it, deploy units, and manage its buildings. Enemy information remains hidden until scouted.</p></div>
+        </section>
+        <section id="panel-buildings" class="panel-view" hidden>
+          <div id="buildingProvinceCard" hidden>
+            <div class="eyebrow">PROVINCE INFRASTRUCTURE</div>
+            <h3 class="selection-name" id="buildingProvinceName">—</h3>
+            <div id="buildingProvinceOwner" class="province-owner"></div>
+            <div id="buildingDetails" class="detail-content building-overview"></div>
+            <div id="buildingControls" class="construction"><div class="panel-subheading build-section-title">CONSTRUCTION CATALOGUE <small>Select an upgrade to add it to this province immediately.</small></div><div id="buildOptions" class="build-grid"></div></div>
+          </div>
+          <div id="emptyBuildings" class="empty-state"><h3>No province selected</h3><p>Select a province to view its buildings and available construction. You can only build in provinces you own.</p></div>
+        </section>
+        <section id="panel-diplomacy" class="panel-view" hidden><p class="panel-intro">Negotiate alliances, declare wars, and respond to diplomatic requests.</p><label class="field-label" for="dipTarget">SELECT NATION</label><select id="dipTarget" class="wide-input"></select><div id="diplomacyPanel"></div></section>
+        <section id="panel-chat" class="panel-view" hidden><p class="panel-intro">Communicate with any nation, regardless of diplomatic status.</p><div id="chatMessages" class="chat-messages" aria-live="polite"></div><form id="chatForm" class="chat-form"><label for="chatRecipient" class="field-label">RECIPIENT</label><select id="chatRecipient" class="wide-input"><option value="all">All nations</option></select><div class="chat-compose"><input id="chatInput" maxlength="280" placeholder="Write your message…" autocomplete="off" aria-label="Chat message"><button type="submit">Send <svg><use href="#ico-chevron"/></svg></button></div></form></section>
+        <section id="panel-orders" class="panel-view" hidden><p class="panel-intro">Track your deployed forces and their estimated arrival times.</p><div id="redirectHint" class="hint-card" hidden></div><div id="movementOrders" class="movement-orders"></div></section>
+        <section id="panel-rankings" class="panel-view" hidden><p class="panel-intro">Global ranking is based on territories (50%), money (25%) and attack potential (25%).</p><div id="leaderboard" class="leaderboard"></div><div class="victory-rules"><strong>VICTORY CONDITIONS</strong><span>Solo: control 51% of provinces</span><span>With ally: control 67% together</span></div></section>
+        <section id="panel-reports" class="panel-view" hidden><p class="panel-intro">Recent combat, diplomacy, and construction activity across Europe.</p><div id="warLog" class="warlog"></div></section>
+        <section id="panel-settings" class="panel-view" hidden><p class="panel-intro">Control strategic map overlays and movement notifications.</p><div class="settings-check"><label><input id="showAlly" type="checkbox" checked><span><strong>Show allied movements</strong><small>Display movement routes of allied armies</small></span></label><label><input id="showHostile" type="checkbox" checked><span><strong>Show incoming attacks</strong><small>Hostile movement appears in the final 20 seconds</small></span></label><label><input id="labelsMode" type="checkbox" checked><span><strong>Show nation labels</strong><small>Dynamic diplomacy-coloured names across the map</small></span></label></div><div class="settings-actions"><span class="eyebrow">IDENTITY</span><div class="identity-row"><span id="myFlag" class="flag"></span><strong id="myNation">Spectator</strong></div><button id="changeNation" class="subtle-button">Choose nation</button></div></section>
+      </div>
+    </div>
+    <section id="orderPlanner" class="order-planner" aria-label="Select troops for army order" hidden>
+      <h3 id="plannerTitle" class="planner-visually-hidden">Move army</h3>
+      <span id="plannerSource" class="planner-visually-hidden">—</span>
+      <p id="plannerInstructions" class="planner-visually-hidden">Choose your troops and click a destination.</p>
+      <div id="orderControls" class="planner-controls">
+        <div class="army-preset-bar planner-visually-hidden"><span>DEPLOYMENT <small>100% selected by default</small></span><div><button type="button" id="armySelectAll">All</button><button type="button" id="armySelectNone">Clear</button></div></div>
+        <div class="army-composer planner-composer">
+          <div class="unit-pick">
+            <label for="armyInfantry" title="Infantry · 10 seconds per province" aria-label="Infantry" class="planner-unit-symbol"><svg aria-hidden="true"><use href="#ico-users"/></svg><span class="planner-visually-hidden">Infantry</span></label>
+            <input id="armyInfantry" type="range" min="0" max="0" step="1" value="0" aria-label="Infantry to send">
+            <output id="armyInfantryValue" for="armyInfantry">0</output>
+            <span id="availableInfantry" class="planner-visually-hidden">0 available</span>
+          </div>
+          <div class="unit-pick">
+            <label for="armyTank" title="Tanks · 20 seconds per province" aria-label="Tanks" class="planner-unit-symbol"><svg aria-hidden="true"><use href="#ico-tank"/></svg><span class="planner-visually-hidden">Tanks</span></label>
+            <input id="armyTank" type="range" min="0" max="0" step="1" value="0" aria-label="Tanks to send">
+            <output id="armyTankValue" for="armyTank">0</output>
+            <span id="availableTank" class="planner-visually-hidden">0 available</span>
+          </div>
+          <div class="unit-pick">
+            <label for="armyBomber" title="Bombers · 7 seconds per province" aria-label="Bombers" class="planner-unit-symbol"><svg aria-hidden="true"><use href="#ico-airport"/></svg><span class="planner-visually-hidden">Bombers</span></label>
+            <input id="armyBomber" type="range" min="0" max="0" step="1" value="0" aria-label="Bombers to send">
+            <output id="armyBomberValue" for="armyBomber">0</output>
+            <span id="availableBomber" class="planner-visually-hidden">0 available</span>
+          </div>
+        </div>
+        <div id="destinationCard" class="planner-visually-hidden" hidden><strong id="destinationName">—</strong><span id="destinationRelation">—</span></div>
+        <div id="orderHint" class="planner-visually-hidden" role="status">Select destination on the map.</div>
+        <button id="clearDestination" class="planner-visually-hidden" type="button" hidden>Choose a different target</button>
+        <button id="plannerCancel" class="planner-visually-hidden" type="button">Cancel order</button>
+      </div>
+    </section>
+    <div id="quickCommand" class="quick-command" hidden aria-label="Province quick actions">
+      <button id="quickAttack" class="quick-action quick-action-attack" type="button" title="Attack — choose a destination" aria-label="Attack with selected troops"><svg aria-hidden="true"><use href="#ico-quick-attack"/></svg><span>Attack</span></button>
+      <button id="quickMove" class="quick-action quick-action-move" type="button" title="Move — choose a destination" aria-label="Move selected troops"><svg aria-hidden="true"><use href="#ico-quick-move"/></svg><span>Move</span></button>
+      <button id="quickBuild" class="quick-action quick-action-build" type="button" title="Open province construction" aria-label="Open buildings in selected province"><svg aria-hidden="true"><use href="#ico-quick-build"/></svg><span>Build</span></button>
+      <button id="confirmOrderBtn" class="quick-action quick-action-confirm" type="button" hidden><svg aria-hidden="true"><use href="#ico-target"/></svg><span>Confirm</span></button>
+      <button id="cancelOrderBtn" class="quick-action quick-action-cancel" type="button" hidden><svg aria-hidden="true"><use href="#ico-close"/></svg><span>Cancel</span></button>
+    </div>
+    <div class="map-counter"><span class="eyebrow">CAMPAIGN OVERVIEW</span><div class="map-counter-line"><span><b id="provinceCount">0</b> territories</span><i></i><span><b id="troopCount">0</b> forces</span></div><div class="map-counter-small" id="productionCount">—</div></div>
+    <div class="map-top-right"><span class="tick-dot"></span> LIVE CAMPAIGN <span class="online-players" id="playersOnline">0 commanders</span></div>
+    <div class="map-bottom-left"><button id="zoomIn" class="square-btn" title="Zoom in" aria-label="Zoom in">+</button><button id="zoomOut" class="square-btn" title="Zoom out" aria-label="Zoom out">−</button><button id="zoomReset" class="square-btn" title="Reset view" aria-label="Reset view">⌖</button></div>
+    <div class="map-bottom-tip">SELECT PROVINCE · MOVE OR ATTACK · ADJUST TROOPS · SELECT DESTINATION · CONFIRM</div>
+    <div id="hoverTip" class="hover-tip" hidden></div><div id="floatingToast" class="toast" role="status" hidden></div>
+  </section>
+</main>
+<!-- Dedicated server lobby. Join codes cannot accidentally create new rooms. -->
+<div id="joinModal" class="backdrop"><div class="modal lobby-modal"><div class="modal-emblem">✦</div><span class="eyebrow">WELCOME TO THE FRONT</span><h1>COMMAND EUROPE</h1><p>Create a private campaign or join friends with a six-digit room code. Each room hosts an independent war.</p><div class="lobby-grid"><div class="lobby-choice"><span class="eyebrow">01 / NEW CAMPAIGN</span><h3>Lead a new war</h3><p>Generate a unique six-digit code and invite up to seven other players.</p><button class="primary-button" id="createRoom" type="button">Create new server <svg><use href="#ico-chevron"/></svg></button></div><div class="lobby-choice"><span class="eyebrow">02 / EXISTING CAMPAIGN</span><h3>Join a server</h3><p>Enter the six-digit code shared by the host.</p><form id="joinForm"><label for="roomInput" class="field-label">SERVER CODE</label><input id="roomInput" placeholder="000000" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" required autocomplete="one-time-code"><button type="submit" class="secondary-button">Join campaign <svg><use href="#ico-chevron"/></svg></button></form></div><div class="lobby-choice public-choice"><span class="eyebrow">03 / PUBLIC MATCHMAKING</span><h3>Quick Match</h3><p>Join an eight-player public campaign. Choose an available nation or pick randomly. The war begins once all eight commanders have chosen.</p><div class="quick-status">8 nations · 8 commanders · 1 campaign</div><button class="primary-button" id="joinRandom" type="button">Join random server <svg><use href="#ico-chevron"/></svg></button></div></div><button id="returnGame" class="subtle-button full" hidden>Return to current campaign</button><div id="joinError" class="form-error" role="alert" hidden></div><small>No account required · Campaign begins 6 October 1939 · 1 in-game day per 10 seconds</small></div></div>
+<div id="publicWaiting" class="backdrop" hidden><div class="modal"><div class="modal-emblem">⌛</div><span class="eyebrow">PUBLIC MATCHMAKING</span><h1>ASSEMBLING COMMANDERS</h1><p id="waitingCount">Waiting for players…</p><div class="waiting-track"><div id="waitingBar"></div></div><p class="waiting-details" id="waitingNation">Choose a nation in the selection window.</p><button id="leaveQueue" class="subtle-button full">Leave matchmaking</button></div></div>
+<div id="nationModal" class="backdrop" hidden><div class="modal choose-modal"><div class="modal-emblem">⚔</div><span class="eyebrow">CAMPAIGN SETUP</span><h1>CHOOSE YOUR NATION</h1><p>One commander per nation. Choose an available country or select Pick Random. Public games begin once all eight nations are filled.</p><div class="lobby-code-copy">ROOM CODE <b id="lobbyRoomCode">—</b> <button id="copyLobbyCode" class="subtle-button">Copy invite code</button></div><div id="nationChoices" class="nation-choices"></div><button id="spectateButton" class="subtle-button full">Spectate the campaign</button></div></div>
+<div id="confirmModal" class="backdrop" hidden><div class="modal confirmation-modal"><div class="modal-emblem">⚔</div><span class="eyebrow">MILITARY ORDER</span><h1>CONFIRM ATTACK</h1><p id="confirmDetails"></p><div class="confirm-buttons"><button class="primary-button" id="confirmYes">Launch attack</button><button class="subtle-button" id="confirmNo">Cancel</button></div></div></div>
+<div id="victoryModal" class="backdrop" hidden><div class="modal"><div class="modal-emblem">★</div><span class="eyebrow">CAMPAIGN COMPLETE</span><h1 id="winnerName">VICTORY</h1><p id="victoryDescription">Victory requires control of 51% of provinces alone or 67% with an ally.</p><button id="restartButton" class="primary-button">Return to main menu</button></div></div>
+</body></html>
