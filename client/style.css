@@ -310,3 +310,70 @@
   .brand-main{font-size:11px}.room-value{font-size:11px}
   .nation-choices{grid-template-columns:1fr}
 }
+
+/* WW2 Royale 1.13 — Seasonal map, province intelligence and tactile interactions */
+.elapsed-hud{display:flex;flex-direction:column;gap:2px;align-items:center;border:1px solid #567c8555;background:#081e2980;border-radius:8px;padding:6px 10px;min-width:69px}
+.elapsed-hud span{color:#a9c0cb;letter-spacing:.11em;font-size:8px;font-weight:850}
+.elapsed-hud strong{color:#f0ddad;font:800 15px Inter,Arial,sans-serif;font-variant-numeric:tabular-nums}
+.season-badge{position:absolute;top:15px;left:112px;z-index:4;pointer-events:none;border:1px solid #cfbd8c80;border-radius:6px;padding:7px 10px;color:#f4dfb9;background:#102c3bc0;font-size:10px;font-weight:800;letter-spacing:.14em}
+.weather-layer{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2}
+.weather-particle{position:absolute;top:-16%;width:5px;height:5px;border-radius:50%;background:rgba(239,248,255,.82);box-shadow:0 0 8px rgba(213,238,253,.35);animation:weatherFall var(--speed,9s) linear infinite;left:var(--x,50%);animation-delay:var(--delay,0s);opacity:var(--opacity,.65)}
+.weather-layer.spring .weather-particle{background:#b5d4e6;border-radius:40%;width:2px;height:16px;transform:rotate(17deg);opacity:.35}
+.weather-layer.autumn .weather-particle{background:#c88c4b;border-radius:80% 10% 80% 10%;width:7px;height:10px;opacity:.35}
+@keyframes weatherFall{0%{transform:translate3d(0,-5vh,0) rotate(0deg)}100%{transform:translate3d(var(--drift,34px),120vh,0) rotate(240deg)}}
+.province-info-bar{position:absolute;z-index:7;left:50%;bottom:92px;transform:translateX(-50%);width:min(680px,calc(100% - 225px));background:linear-gradient(115deg,rgba(13,31,42,.91),rgba(23,46,55,.90));backdrop-filter:blur(12px);border:1px solid #77909a8f;border-radius:13px;color:#e9e8d8;box-shadow:0 10px 30px #0007;padding:10px 14px;pointer-events:none}
+.province-info-head{display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid #78909a45;padding-bottom:7px;margin-bottom:8px}
+.province-info-head strong{font:750 15px Cinzel,Georgia,serif;color:#f4daa8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.province-info-head span{font-size:9px;letter-spacing:.08em;font-weight:850;color:#acd2cf;white-space:nowrap}
+.province-info-data{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;font-size:12px}
+.intel-group{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.intel-entry{display:inline-flex;align-items:center;gap:4px;color:#ebeee9;font-weight:800;white-space:nowrap}
+.intel-entry svg{width:17px;height:17px;stroke:#e4c88e;fill:none;stroke-width:1.8}
+.intel-separator{width:1px;background:#7d91965c;align-self:stretch;min-height:20px}
+.intel-locked{color:#aec0ca;font-size:11px;font-style:italic;line-height:1.4}
+.intel-garrison{color:#90c7e8;font-size:10px;line-height:1.4}
+.toast-stack{position:absolute;z-index:25;top:82px;right:18px;pointer-events:none;display:flex;flex-direction:column;align-items:flex-end;gap:8px;max-width:min(350px,65vw)}
+.float-toast{max-width:100%;font-size:12px;font-weight:700;color:#f7e8c8;padding:10px 15px;border:1px solid #bda67388;border-radius:9px;background:rgba(21,45,57,.74);backdrop-filter:blur(6px);box-shadow:0 4px 14px #0003;line-height:1.35;animation:toastFloat 3s ease-out forwards}
+.float-toast.success{border-color:#6acfa58c;color:#d8ffe9}
+.float-toast.error{border-color:#e48e8eaa;color:#ffe1d7}
+@keyframes toastFloat{0%{opacity:0;transform:translateY(16px)}10%{opacity:1}65%{opacity:1;transform:translateY(-12px)}100%{opacity:0;transform:translateY(-36px)}}
+.building-shop-card,.troop-buy-card{transition:transform .12s,border-color .14s,filter .14s}
+.building-shop-card:active,.troop-buy-card:active{transform:scale(.985)}
+.building-shop-buy:active,.troop-buy-button:active,.quick-action:active,.rail-btn:active{transform:scale(.92);filter:brightness(1.25)}
+.troop-shop{display:flex;flex-direction:column;gap:10px;margin:18px 0 0;padding-top:13px;border-top:1px solid #68879277}
+.troop-shop h3{font:800 15px Cinzel,Georgia,serif;color:#ead19a;margin:0}
+.troop-buy-card{display:flex;gap:12px;align-items:center;border:1px solid #55748188;border-radius:11px;padding:10px;background:linear-gradient(135deg,#263e49,#182d37)}
+.troop-buy-emblem{flex:0 0 36px;width:36px;height:36px;border-radius:8px;background:#b4c6d216;display:grid;place-items:center;color:#efcf93}
+.troop-buy-emblem svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.7}
+.troop-buy-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.troop-buy-info strong{font-size:12px;color:#f1e2bc}
+.troop-buy-info small{font-size:10px;color:#a9c3d0;line-height:1.3}
+.troop-buy-actions{display:flex;gap:5px}
+.troop-buy-button{background:#3b6673;border:1px solid #79a0aa;border-radius:7px;padding:7px 8px;min-width:52px;font-weight:850;font-size:11px;color:#edf7ef}
+.troop-buy-button:disabled{opacity:.3}
+.spy-section{display:flex;flex-direction:column;gap:7px;margin-top:13px;padding-top:12px;border-top:1px solid #7691a36a}
+.spy-section strong{font-size:12px;color:#e6d5aa}
+.spy-item{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#c3d4d9;font-size:11px;border:1px solid #4d758077;border-radius:7px;padding:8px}
+.spy-deploy{border:1px solid #83bcbe;background:#285263;color:#efffff;border-radius:6px;padding:7px 10px;font-weight:800;font-size:11px}
+@media (max-width:700px), (pointer:coarse) and (max-width:920px){
+  .elapsed-hud{padding:5px;min-width:53px}
+  .elapsed-hud span{font-size:7px}.elapsed-hud strong{font-size:12px}
+  .season-badge{top:11px;left:10px;font-size:8px;padding:5px 7px}
+  .province-info-bar{width:calc(100% - 16px);left:8px;transform:none;bottom:calc(134px + env(safe-area-inset-bottom,0px));padding:7px 10px;max-height:78px;overflow:hidden;border-radius:10px;z-index:8}
+  .province-info-head{margin-bottom:4px;padding-bottom:4px}.province-info-head strong{font-size:12px}
+  .province-info-data{font-size:10px;gap:6px}.intel-entry svg{height:14px;width:14px}
+  .quick-command{bottom:calc(220px + env(safe-area-inset-bottom,0px))}
+  .order-planner{bottom:calc(286px + env(safe-area-inset-bottom,0px))}
+  .toast-stack{z-index:24;top:auto;bottom:calc(340px + env(safe-area-inset-bottom,0px));right:10px;left:10px;max-width:none;align-items:center}
+  .float-toast{background:rgba(16,41,55,.47);backdrop-filter:blur(2px);border-color:#bba98158;box-shadow:none;text-align:center;max-width:95%;font-size:11px;padding:8px 12px}
+  .troop-buy-card{flex-wrap:wrap}.troop-buy-actions{margin-left:auto}
+}
+@media(max-width:375px){.province-info-bar{bottom:calc(128px + env(safe-area-inset-bottom,0px))}.quick-command{bottom:calc(212px + env(safe-area-inset-bottom,0px))}.order-planner{bottom:calc(276px + env(safe-area-inset-bottom,0px))}}
+@media(prefers-reduced-motion:reduce){.float-toast{animation:none}.weather-particle{animation:none;display:none}}
+
+
+/* Publish polish */
+.map-bottom-tip{display:none!important}
+button,.rail-btn,.quick-action,.primary-button,.secondary-button,.subtle-button,.header-button,.icon-mini,.square-btn{transition:transform .08s ease,filter .12s ease,border-color .12s ease,background .12s ease,box-shadow .12s ease}
+.header-button:active,.icon-mini:active,.primary-button:active,.secondary-button:active,.subtle-button:active,.square-btn:active{transform:translateY(1px) scale(.97);filter:brightness(1.12)}
+.quick-command .quick-action:active,.rail-btn:active,.building-shop-buy:active,.troop-buy-button:active{transform:translateY(1px) scale(.95);filter:brightness(1.16)}

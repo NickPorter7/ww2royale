@@ -1,21 +1,25 @@
 /* WW2 Royale 1.5 — independent authoritative game rules. */
 export const UNIT={infantry:{hp:20,min:10,max:12,role:'land'},tank:{hp:100,min:20,max:30,role:'land'},bomber:{hp:50,min:35,max:40,role:'air'}};
-export const BUILD={barracks:{cost:20,ms:45000,unit:'infantry'},shop:{cost:90,ms:90000,unit:'tank'},airport:{cost:175,ms:240000,unit:'bomber'},bank:{cost:50},defense:{cost:200}};
+// Construction unlocks purchases; only banks generate passive income.
+export const BUILD={barracks:{cost:20,max:1},workshop:{cost:90,max:1},airport:{cost:175,max:2},bank:{cost:50,max:3},defense:{cost:200,max:1}};
+export const UNIT_COST={infantry:15,tank:75,bomber:150,balloon:200};
+export const SPY_RADIUS=2; // number of province borders visible around a stationed balloon
+
 export const START_MONEY=100, HOP_MS=5000, MAX_UNITS=100000;
 export const MOVE_MS={infantry:10000,tank:20000,bomber:7000};
 const unitKeys=Object.keys(UNIT),buildingKeys=Object.keys(BUILD);
 const pair=(a,b)=>[a,b].sort().join(':');
 const roundMoney=n=>Math.round(n*100)/100;
 const troops=()=>({infantry:0,tank:0,bomber:0});
-const buildings=()=>({barracks:1,shop:0,airport:0,bank:1,defense:0});
+const buildings=()=>({barracks:1,workshop:0,airport:0,bank:1,defense:0});
 const sumTroops=(stack)=>unitKeys.reduce((n,k)=>n+(stack?.[k]||0),0);
 function hasAny(v){return unitKeys.some(k=>(v?.[k]||0)>0);}
 export function createGame(map,now=Date.now(),options={}){
   const nations=Object.keys(map.nations);
   return {map,provinceDefinitions:new Map(map.provinces.map(p=>[p.id,p])),
-    provinces:map.provinces.map(p=>({id:p.id,owner:p.nation,units:{...troops(),infantry:p.troops},garrison:{},buildings:buildings(),production:{barracks:now+45000,shop:now+90000,airport:now+240000},defenseReady:true})),
+    provinces:map.provinces.map(p=>({id:p.id,owner:p.nation,units:{...troops(),infantry:p.troops},garrison:{},buildings:buildings(),defenseReady:true})),
     money:Object.fromEntries(nations.map(n=>[n,START_MONEY])),
-    diplomacy:{},requests:[],peaceRequests:[],movements:[],chat:[],log:['The struggle for Europe has begun.'],winner:null,
+    diplomacy:{},requests:[],peaceRequests:[],movements:[],spyBalloons:[],nextBalloon:1,chat:[],log:['The struggle for Europe has begun.'],winner:null,
     lastTick:now,campaignStartAt:now,nextOrder:1,hopMs:options.hopMs||HOP_MS,random:options.random||Math.random,events:[]};
 }
 export function relation(g,a,b){return a===b?'self':g.diplomacy[pair(a,b)]||'neutral';}
@@ -318,14 +322,48 @@ function defensePrestrike(g,o){
 }
 export function build(g,nation,provinceId,kind,now=Date.now()){
   const p=g.provinces[provinceId-1],b=BUILD[kind];
-  if(g.winner||!p||p.owner!==nation||!b)throw Error('Cannot construct there.');
-  if(p.buildings[kind] && kind==='defense')throw Error('One defense system maximum per province.');
+  if(g.winner||!p||p.owner!==nation||!b)throw Error('Cannot construct in that province.');
+  if(p.buildings[kind]>=b.max)throw Error(`Maximum ${b.max} ${kind} level(s) in this province.`);
   if(g.money[nation]<b.cost)throw Error('Insufficient funds.');
-  if(p.buildings[kind]>=100)throw Error('Maximum 100 buildings of this type.');
-  g.money[nation]=roundMoney(g.money[nation]-b.cost);p.buildings[kind]++;
-  if(b.ms&&p.buildings[kind]===1)p.production[kind]=now+b.ms;
-  writeLog(g,`${nation} constructed ${kind} in ${g.provinceDefinitions.get(provinceId).name}.`);
+  g.money[nation]=roundMoney(g.money[nation]-b.cost);
+  p.buildings[kind]++;
+  writeLog(g,`${nation} upgraded ${kind} in ${g.provinceDefinitions.get(provinceId).name} to level ${p.buildings[kind]}.`);
   return p;
+}
+export function buyUnit(g,nation,provinceId,type,amount=1){
+  const p=g.provinces[provinceId-1];
+  if(g.winner||!p||p.owner!==nation)throw Error('You may only recruit in your own province.');
+  if(!(type in UNIT_COST)||!Number.isSafeInteger(amount)||amount<1||amount>500)throw Error('Invalid recruitment request.');
+  if(type==='infantry'&&p.buildings.barracks<1)throw Error('Build barracks first.');
+  if(type==='tank'&&p.buildings.workshop<1)throw Error('Build a workshop first.');
+  if(type==='bomber'&&p.buildings.airport<2)throw Error('Upgrade the airport to level 2 first.');
+  if(type==='balloon'&&p.buildings.airport<1)throw Error('Build a level 1 airport first.');
+  if(type==='balloon'&&(amount>5||g.spyBalloons.filter(b=>b.nation===nation).length+amount>20))throw Error('Maximum 20 balloons per nation; purchase up to 5 at a time.');
+  if(type!=='balloon'&&p.units[type]+amount>MAX_UNITS)throw Error('Province unit limit reached.');
+  const total=UNIT_COST[type]*amount;
+  if(g.money[nation]<total)throw Error(`Insufficient funds. Need $${total}.`);
+  g.money[nation]=roundMoney(g.money[nation]-total);
+  if(type==='balloon')for(let i=0;i<amount;i++)g.spyBalloons.push({id:g.nextBalloon++,nation,province:provinceId});
+  else p.units[type]+=amount;
+  writeLog(g,`${nation} purchased ${amount} ${type}${amount===1?'':'s'} in ${g.provinceDefinitions.get(provinceId).name}.`);
+  return {province:provinceId,type,amount,total};
+}
+export function stationBalloon(g,nation,id,provinceId){
+  const balloon=g.spyBalloons.find(b=>b.id===id&&b.nation===nation);
+  if(!balloon||!g.provinces[provinceId-1]||g.winner)throw Error('Invalid spy balloon assignment.');
+  balloon.province=provinceId;
+  writeLog(g,`${nation} stationed a reconnaissance balloon over ${g.provinceDefinitions.get(provinceId).name}.`);
+  return balloon;
+}
+function reconnaissanceZone(g,from,radius=SPY_RADIUS){
+  const visited=new Set([from]),queue=[[from,0]];
+  for(let i=0;i<queue.length;i++){
+    const [id,depth]=queue[i];if(depth>=radius)continue;
+    for(const n of g.provinceDefinitions.get(id)?.neighbors||[])if(!visited.has(n)){
+      visited.add(n);queue.push([n,depth+1]);
+    }
+  }
+  return visited;
 }
 export function sendChat(g,nation,content,now=Date.now()){
   const message=typeof content==='string'?content:content?.message;
@@ -366,18 +404,7 @@ export function tick(g,now=Date.now()){
   // Bank income is continuous per nation; unclaimed nations still accumulate.
   const bankTotals={};for(const p of g.provinces)bankTotals[p.owner]=(bankTotals[p.owner]||0)+p.buildings.bank;
   for(const [n,c] of Object.entries(bankTotals)){g.money[n]=roundMoney(g.money[n]+c*.1*elapsed/1000);changed=true;}
-  for(const p of g.provinces){
-    for(const kind of ['barracks','shop','airport']){
-      const amount=p.buildings[kind],ms=BUILD[kind].ms;
-      if(!amount)continue;
-      if(p.production[kind]<=now){
-        const cycles=Math.min(1000,Math.floor((now-p.production[kind])/ms)+1);
-        // Each building produces one unit per cycle, locally in this province.
-        p.units[BUILD[kind].unit]=Math.min(MAX_UNITS,p.units[BUILD[kind].unit]+cycles*amount);
-        p.production[kind]+=cycles*ms;changed=true;
-      }
-    }
-  }
+  // No automatic troop production: recruitment is an explicit paid command.
   const pending=[];
   for(const o of g.movements){
     if(!routeValid(g,o)){
@@ -412,18 +439,22 @@ export function tick(g,now=Date.now()){
   g.movements=g.winner?[]:pending;
   return changed;
 }
-function canSeeEnemy(g,nation,p,now=Date.now()){
+function canSeeEnemy(g,nation,p,now=Date.now(),spyVision=null){
   if(!nation)return false;
   if(p.owner===nation||relation(g,nation,p.owner)==='ally')return true;
   if(g.provinceDefinitions.get(p.id).neighbors.some(id=>g.provinces[id-1].owner===nation))return true;
+  if(spyVision?.has(p.id))return true;
   return g.movements.some(o=>o.type==='bomber'&&o.nation===nation&&o.to===p.id&&o.attacking&&o.arrivalAt-now<=10000);
 }
 export function viewFor(g,nation,now=Date.now(),options={allyMoves:true,hostileMoves:true}){
+  const spyVision=new Set();
+  if(nation)for(const b of g.spyBalloons)if(b.nation===nation||relation(g,nation,b.nation)==='ally')
+    for(const id of reconnaissanceZone(g,b.province))spyVision.add(id);
   const provinces=g.provinces.map(p=>{
-    const visible=canSeeEnemy(g,nation,p,now);
+    const visible=canSeeEnemy(g,nation,p,now,spyVision);
     return {id:p.id,owner:p.owner,units:visible?{...p.units}:null,
       garrison:visible?structuredClone(p.garrison):null,buildings:visible?{...p.buildings}:null,
-      production:visible?{...p.production}:null,visible};
+      production:null,visible};
   });
   const movements=g.movements.filter(o=>{
     if(o.nation===nation)return true;
@@ -432,7 +463,8 @@ export function viewFor(g,nation,now=Date.now(),options={allyMoves:true,hostileM
       g.provinces[o.to-1].owner===nation&&o.arrivalAt-now<=20000);
   }).map(o=>({...o}));
   return {provinces,occupied:[],money:nation?g.money[nation]:null,rankings:rankings(g),
-    campaignDay:Math.max(0,Math.floor((now-g.campaignStartAt)/(g.map.secondsPerDay||10)/1000)),
+    spyBalloons:g.spyBalloons.filter(b=>nation&&(b.nation===nation||relation(g,nation,b.nation)==='ally')).map(b=>({...b})),
+    campaignDay:Math.max(0,Math.floor((now-g.campaignStartAt)/(g.map.secondsPerDay||10)/1000)),elapsedSeconds:Math.max(0,Math.floor((now-g.campaignStartAt)/1000)),
     winner:g.winner,diplomacy:g.diplomacy,requests:g.requests,peaceRequests:g.peaceRequests,
     movements,log:g.log,chat:g.chat.filter(m=>m.to==='all'||m.nation===nation||m.to===nation),hopMs:g.hopMs,serverTime:now};
 }

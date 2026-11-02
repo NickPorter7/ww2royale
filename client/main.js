@@ -22,11 +22,59 @@ const image = (src) => new Promise((resolve,reject)=>{
   const img = new Image(); img.onload = () => resolve(img); img.onerror=()=>reject(new Error(`Cannot load ${src}`)); img.src=src;
 });
 
-let map, mapImage, territoryImage, borderImage, idPixels, originalPixels, tintCanvas;
+const AUDIO_FILES = {
+  music:'/assets/audio/music-loop.wav',
+  click:'/assets/audio/click.wav',
+  build:'/assets/audio/build.wav',
+  message:'/assets/audio/message.wav',
+  infantry:'/assets/audio/buy-infantry.wav',
+  tank:'/assets/audio/buy-tank.wav',
+  plane:'/assets/audio/move-plane.wav',
+  move:'/assets/audio/move.wav',
+  attack:'/assets/audio/attack.wav'
+};
+function unlockAudio(){
+  if(soundState.ready) return;
+  soundState.ready = true;
+  if(!soundState.music){
+    const music = new Audio(AUDIO_FILES.music);
+    music.loop = true; music.volume = 0.22; music.preload = 'auto';
+    soundState.music = music;
+  }
+  soundState.music.play().catch(()=>{});
+}
+function playSound(kind, opts={}){
+  if(!soundState.enabled || !AUDIO_FILES[kind]) return;
+  unlockAudio();
+  const a = new Audio(AUDIO_FILES[kind]);
+  a.volume = Math.max(0, Math.min(1, opts.volume ?? 0.55));
+  a.play().catch(()=>{});
+}
+function orderSound(units, kind){
+  if(kind==='attack') return 'attack';
+  if((units?.bomber||0)>0) return 'plane';
+  if((units?.tank||0)>0) return 'tank';
+  return 'move';
+}
+window.addEventListener('pointerdown', unlockAudio, {once:true});
+window.addEventListener('keydown', unlockAudio, {once:true});
+document.addEventListener('click', event=>{
+  const btn = event.target.closest('button');
+  if(!btn || btn.disabled) return;
+  const now = performance.now();
+  if(now-soundState.lastButtonAt<45) return;
+  soundState.lastButtonAt = now;
+  playSound('click',{volume:0.35});
+}, true);
+
+let map, mapImage, territoryImage, borderImage, idPixels, originalPixels, tintCanvas, smoothBorderCanvas;
+let unitArt = {};
+let soundState = {ready:false,music:null,enabled:true,lastButtonAt:0};
 let definition = new Map(), nationColor = {}, nationNames = {};
 let game = null, assigned = null, selected = null, hovered = null, room = null;
+let deployingBalloonId=null, currentSeason="autumn", seasonAssets={}, currentSeasonImage=null;
 let labels = true, pendingOrder=null, draftTarget=null, redirectOrderId=null, redirectTarget=null, isPublicMatch=false;
-let lastCountSource=null,lastSidebarAt=0,lastChoiceKey='';
+let lastCountSource=null,lastSidebarAt=0,lastChoiceKey='',lastBuildRenderKey='';
 let actionMode=null, territoryBorderCanvas=null, paintKey='';
 let movementPrefs={allyMoves:true,hostileMoves:true};
 let showJoinOnConnect = true;
@@ -74,9 +122,37 @@ let gameClockServerAt = 0, gameClockClientAt = 0;
 function gameNow(){ return gameClockServerAt ? gameClockServerAt+(performance.now()-gameClockClientAt) : Date.now(); }
 const ownerMap = new Map();
 
-function notice(text){
-  const node=$('floatingToast');node.textContent=text;node.hidden=false;
-  clearTimeout(toastTimeout);toastTimeout=setTimeout(()=>node.hidden=true,3500);
+function notice(text,kind='info'){
+  const stack=$('toastStack');if(!stack)return;
+  const node=document.createElement('div');node.className='float-toast '+kind;node.textContent=String(text);
+  stack.append(node);
+  while(stack.children.length>4)stack.firstElementChild.remove();
+  node.addEventListener('animationend',()=>node.remove(),{once:true});
+  setTimeout(()=>node.remove(),3200);
+}
+function syncElapsed(){
+  if(!game||!game.started){$('elapsedClock').textContent='00:00';return;}
+  const n=Math.max(0,Math.floor((game.elapsedSeconds||0)+(gameNow()-(game.serverTime||gameNow()))/1000));
+  const h=Math.floor(n/3600),m=Math.floor(n%3600/60),sec=n%60;
+  $('elapsedClock').textContent=h?`${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+}
+function setSeason(season){
+  if(season===currentSeason&&$('weatherLayer').dataset.ready==='yes')return;
+  currentSeason=season;currentSeasonImage=seasonAssets[season]||null;
+  const weather=$('weatherLayer');weather.className='weather-layer '+season;weather.replaceChildren();
+  if(season!=='summer'){
+    const mobile=window.matchMedia('(max-width:700px)').matches;
+    const count=season==='winter'?(mobile?25:52):(mobile?11:23);
+    for(let i=0;i<count;i++){
+      const flake=document.createElement('span');flake.className='weather-particle';
+      flake.style.setProperty('--x',`${(i*61.8034)%100}%`);
+      flake.style.setProperty('--speed',`${6+(i%9)*1.1}s`);
+      flake.style.setProperty('--delay',`${-(i*2.17)%15}s`);
+      flake.style.setProperty('--drift',`${(i%2===0?1:-1)*(12+(i%8)*9)}px`);
+      flake.style.setProperty('--opacity',`${.30+(i%6)*.08}`);weather.append(flake);
+    }
+  }
+  weather.dataset.ready='yes';queueRender();
 }
 function resize(){
   const rect=canvas.getBoundingClientRect();
@@ -138,18 +214,27 @@ function effectiveOrderKind(){
 }
 function selectedArmyIcon(units){return units?.bomber>0?'bomber':units?.tank>0?'tank':'infantry';}
 function drawUnitIcon(x,y,type,tint,alpha=1){
+  const icon=unitArt[type];
   ctx.save();ctx.globalAlpha*=alpha;ctx.translate(x,y);
-  ctx.fillStyle='rgba(8,18,23,.95)';ctx.strokeStyle=tint;ctx.lineWidth=1.8;
-  ctx.beginPath();ctx.arc(0,0,16,0,Math.PI*2);ctx.fill();ctx.stroke();
-  ctx.fillStyle=tint;ctx.strokeStyle=tint;ctx.lineWidth=2.2;ctx.lineCap='round';ctx.lineJoin='round';
-  if(type==='bomber'){
-    ctx.beginPath();ctx.moveTo(0,-12);ctx.lineTo(3,-3);ctx.lineTo(13,3);ctx.lineTo(13,7);ctx.lineTo(3,5);ctx.lineTo(3,10);ctx.lineTo(7,12);ctx.lineTo(-7,12);ctx.lineTo(-3,10);ctx.lineTo(-3,5);ctx.lineTo(-13,7);ctx.lineTo(-13,3);ctx.lineTo(-3,-3);ctx.closePath();ctx.fill();
-  }else if(type==='tank'){
-    ctx.fillRect(-11,0,22,7);ctx.fillRect(-8,-6,14,8);ctx.fillRect(4,-5,9,3);
-    ctx.fillStyle='#142630';for(let a=-7;a<=7;a+=7){ctx.beginPath();ctx.arc(a,4,1.5,0,Math.PI*2);ctx.fill();}
+  ctx.shadowColor='rgba(0,0,0,.35)';ctx.shadowBlur=8;ctx.shadowOffsetY=2;
+  if(icon&&icon.complete){
+    const size=34;
+    ctx.drawImage(icon,-size/2,-size/2,size,size);
+    ctx.shadowBlur=0;
+    ctx.strokeStyle=tint;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(0,0,18,0,Math.PI*2);ctx.stroke();
   }else{
-    ctx.beginPath();ctx.arc(0,-7,4,0,Math.PI*2);ctx.fill();
-    ctx.beginPath();ctx.moveTo(0,-2);ctx.lineTo(0,9);ctx.moveTo(-7,2);ctx.lineTo(7,2);ctx.moveTo(0,9);ctx.lineTo(-6,13);ctx.moveTo(0,9);ctx.lineTo(6,13);ctx.stroke();
+    ctx.fillStyle='rgba(8,18,23,.95)';ctx.strokeStyle=tint;ctx.lineWidth=1.8;
+    ctx.beginPath();ctx.arc(0,0,16,0,Math.PI*2);ctx.fill();ctx.stroke();
+    ctx.fillStyle=tint;ctx.strokeStyle=tint;ctx.lineWidth=2.2;ctx.lineCap='round';ctx.lineJoin='round';
+    if(type==='bomber'){
+      ctx.beginPath();ctx.moveTo(0,-12);ctx.lineTo(3,-3);ctx.lineTo(13,3);ctx.lineTo(13,7);ctx.lineTo(3,5);ctx.lineTo(3,10);ctx.lineTo(7,12);ctx.lineTo(-7,12);ctx.lineTo(-3,10);ctx.lineTo(-3,5);ctx.lineTo(-13,7);ctx.lineTo(-13,3);ctx.lineTo(-3,-3);ctx.closePath();ctx.fill();
+    }else if(type==='tank'){
+      ctx.fillRect(-11,0,22,7);ctx.fillRect(-8,-6,14,8);ctx.fillRect(4,-5,9,3);
+      ctx.fillStyle='#142630';for(let a=-7;a<=7;a+=7){ctx.beginPath();ctx.arc(a,4,1.5,0,Math.PI*2);ctx.fill();}
+    }else{
+      ctx.beginPath();ctx.arc(0,-7,4,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.moveTo(0,-2);ctx.lineTo(0,9);ctx.moveTo(-7,2);ctx.lineTo(7,2);ctx.moveTo(0,9);ctx.lineTo(-6,13);ctx.moveTo(0,9);ctx.lineTo(6,13);ctx.stroke();
+    }
   }
   ctx.restore();
 }
@@ -210,16 +295,46 @@ function relationWith(owner){
   const key=[assigned,owner].sort().join(':');
   return game?.diplomacy?.[key]||'neutral';
 }
+function smoothLoop(loop, iterations=2){
+  let pts=(loop||[]).map(([x,y])=>({x,y}));
+  if(pts.length<4) return loop||[];
+  for(let n=0;n<iterations;n++){
+    const out=[];
+    for(let i=0;i<pts.length;i++){
+      const p=pts[i], q=pts[(i+1)%pts.length];
+      out.push({x:p.x*0.75+q.x*0.25, y:p.y*0.75+q.y*0.25});
+      out.push({x:p.x*0.25+q.x*0.75, y:p.y*0.25+q.y*0.75});
+    }
+    pts=out;
+  }
+  return pts.map(p=>[p.x,p.y]);
+}
+function displayLoops(province){
+  if(province._displayLoops) return province._displayLoops;
+  province._displayLoops=(province.paths||[]).map(loop=>smoothLoop(loop, province.nation==='PT'||province.nation==='ES'?3:2));
+  return province._displayLoops;
+}
 function pathFor(province){
   if(province._path)return province._path;
   const path=new Path2D();
-  for(const loop of province.paths||[]){
+  for(const loop of displayLoops(province)){
     if(loop.length<3)continue;
     path.moveTo(loop[0][0],loop[0][1]);
     for(let i=1;i<loop.length;i++)path.lineTo(loop[i][0],loop[i][1]);
     path.closePath();
   }
   province._path=path;return path;
+}
+function buildSmoothBorderCanvas(){
+  if(!map) return null;
+  const layer=document.createElement('canvas'); layer.width=map.width; layer.height=map.height;
+  const c=layer.getContext('2d');
+  c.lineJoin='round'; c.lineCap='round';
+  c.strokeStyle='rgba(18,22,24,.8)'; c.lineWidth=1.2;
+  for(const p of map.provinces){ c.stroke(pathFor(p)); }
+  c.strokeStyle='rgba(255,245,214,.24)'; c.lineWidth=0.65;
+  for(const p of map.provinces){ c.stroke(pathFor(p)); }
+  return layer;
 }
 function drawOutline(id,colour,line){
   if(!id)return;
@@ -451,10 +566,6 @@ function drawDraftRoute(){
   ctx.save();ctx.globalAlpha=.45;ctx.lineWidth=2.8;ctx.strokeStyle=tint;
   ctx.lineCap='round';ctx.setLineDash([9,9]);ctx.lineDashOffset=-performance.now()/100;ctx.beginPath();
   ctx.moveTo(pts[0].x,pts[0].y);for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i].x,pts[i].y);ctx.stroke();ctx.setLineDash([]);
-  // A faint arrow at the destination communicates intended direction.
-  const end=pts.at(-1),prev=pts.at(-2),angle=Math.atan2(end.y-prev.y,end.x-prev.x);
-  ctx.save();ctx.translate(end.x,end.y);ctx.rotate(angle);ctx.fillStyle=tint;
-  ctx.beginPath();ctx.moveTo(8,0);ctx.lineTo(-8,-5);ctx.lineTo(-8,5);ctx.closePath();ctx.fill();ctx.restore();
   let total=0;const lengths=[];for(let i=1;i<pts.length;i++){const d=Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y);lengths.push(d);total+=d;}
   let travelled=(performance.now()/21)%Math.max(1,total),x=pts[0].x,y=pts[0].y;
   for(let i=0;i<lengths.length;i++){
@@ -463,6 +574,20 @@ function drawDraftRoute(){
   }
   drawUnitIcon(x,y,selectedArmyIcon(armyFormUnits()),tint,.85);
   ctx.restore();queueRender();
+}
+function drawSpyBalloons(){
+  if(!game?.spyBalloons?.length)return;
+  ctx.save();ctx.font='900 13px Arial';ctx.textAlign='center';ctx.textBaseline='middle';
+  const groups=new Map();for(const spy of game.spyBalloons){const key=spy.province+':'+spy.nation;groups.set(key,(groups.get(key)||0)+1);}
+  for(const [key,count] of groups){
+    const [id,nation]=key.split(':'),p=definition.get(Number(id));if(!p)continue;
+    const x=p.x+21,y=p.y-30;
+    ctx.fillStyle='rgba(13,43,60,.95)';ctx.strokeStyle=nation===assigned?'#e6d196':'#89c0f3';ctx.lineWidth=1.6;
+    ctx.beginPath();ctx.ellipse(x,y,11,14,0,0,Math.PI*2);ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x,y+14);ctx.lineTo(x,y+21);ctx.stroke();
+    ctx.fillStyle='#f2eac9';ctx.fillText(String(count),x,y);
+  }
+  ctx.restore();
 }
 function drawTroops(){
   if(!game)return;
@@ -496,10 +621,10 @@ function draw(){
   ctx.fillStyle='#092632';ctx.fillRect(0,0,camera.cw,camera.ch);
   if(!map||!mapImage)return;updateTransform();
   ctx.save();ctx.translate(camera.tx,camera.ty);ctx.scale(camera.scale,camera.scale);
-  ctx.drawImage(mapImage,0,0);if(tintCanvas)ctx.drawImage(tintCanvas,0,0);
-  if(borderImage)ctx.drawImage(borderImage,0,0);if(territoryBorderCanvas)ctx.drawImage(territoryBorderCanvas,0,0);drawLabels();drawMovements();drawDraftRoute();
+  ctx.drawImage(mapImage,0,0);if(tintCanvas)ctx.drawImage(tintCanvas,0,0);if(currentSeasonImage)ctx.drawImage(currentSeasonImage,0,0);
+  if(smoothBorderCanvas)ctx.drawImage(smoothBorderCanvas,0,0); else if(borderImage)ctx.drawImage(borderImage,0,0); if(territoryBorderCanvas)ctx.drawImage(territoryBorderCanvas,0,0);drawLabels();drawMovements();drawDraftRoute();
   drawOutline(hovered,'rgba(251,236,157,.8)',2.7);drawOutline(draftTarget?null:selected,'#ffdc87',4);drawOutline(redirectTarget,'#ffbc76',3);
-  drawTroops();ctx.restore();if(game?.movements?.length)queueRender();
+  drawSpyBalloons();ctx.restore();if(game?.movements?.length)queueRender();
 }
 function createButton(label,action,cls=''){
   const b=document.createElement('button');b.type='button';b.textContent=label;
@@ -510,62 +635,65 @@ function renderProvinceStats(state,visible){
   const troops=$('selectionDetails'),builds=$('buildingDetails');
   troops.replaceChildren();builds.replaceChildren();
   if(!visible){
-    troops.append(elem('div','Troop information classified. Border a hostile province or scout it with incoming bombers.','locked-info'));
-    builds.append(elem('div','Buildings are concealed until this province is scouted.','locked-info'));
+    troops.append(elem('div','Intelligence classified. Approach from a bordering province, negotiate an alliance, or deploy a spy balloon.','locked-info'));
+    builds.append(elem('div','Infrastructure classified until recon is available.','locked-info'));
     return;
   }
-  troops.append(elem('div','STATIONED TROOPS','detail-heading'));
   const grid=elem('div','','unit-grid');
   for(const [kind,label,role] of [['infantry','Infantry','LAND'],['tank','Tanks','ARMOURED'],['bomber','Bombers','AIR']]){
     const tile=elem('div','','unit-tile');tile.append(elem('small',label),elem('strong',Number(state.units?.[kind]||0).toLocaleString()),elem('em',role));grid.append(tile);
   }
-  troops.append(grid);
+  troops.append(elem('div','STATIONED TROOPS','detail-heading'),grid);
   for(const [nation,stack] of Object.entries(state.garrison||{})){
     if(!unitTotal(stack))continue;
     const item=elem('div','','garrison-line');
     const title=elem('strong',`${nationNames[nation]||nation} · allied garrison`);
     title.style.color=nationColor[nation]||'#f4e1b5';
-    item.append(title,elem('span',`${stack.infantry||0} infantry  ·  ${stack.tank||0} tanks  ·  ${stack.bomber||0} bombers`));
-    troops.append(item);
+    item.append(title,elem('span',`${stack.infantry||0} infantry · ${stack.tank||0} tanks · ${stack.bomber||0} bombers`));troops.append(item);
   }
-  if(state.owner===assigned){
-    // A compact summary sits above the purchase catalogue; the catalogue itself
-    // shows individual building counts, costs and effects (no duplicate list).
-    const metrics=elem('div','','build-metrics');
-    const banks=Number(state.buildings?.bank||0);
-    const barracks=Number(state.buildings?.barracks||0);
-    const shops=Number(state.buildings?.shop||0);
-    const airports=Number(state.buildings?.airport||0);
-    const defense=Number(state.buildings?.defense||0);
-    for(const [value,label] of [
-      [cash(banks*.1)+'/s','BANK INCOME'],
-      [String(barracks+shops+airports),'PRODUCTION SITES'],
-      [defense?'ACTIVE':'NONE','DEFENCE SYSTEM']
-    ]){
-      const tile=elem('div','','build-metric');
-      tile.append(elem('span',label),elem('strong',value));
-      metrics.append(tile);
-    }
-    builds.append(metrics);
-  }else{
-    builds.append(elem('div','SCOUTED INFRASTRUCTURE','detail-heading'));
-    const list=elem('div','','buildings-list');
-    for(const [key,label,icon,benefit] of [
-      ['barracks','Barracks','ico-barracks','1 infantry / 45s'],
-      ['shop','Auto shops','ico-autoshop','1 tank / 90s'],
-      ['airport','Airports','ico-airport','1 bomber / 240s'],
-      ['bank','Banks','ico-bank','$0.10 / sec'],
-      ['defense','Defences','ico-fort','20% incoming damage']
-    ]){
-      const tile=elem('div','','building-summary');
-      const symbol=elem('span','','building-summary-icon');symbol.append(iconSvg(icon));
-      const info=elem('div','','building-summary-info');
-      info.append(elem('strong',label),elem('small',benefit));
-      tile.append(symbol,info,elem('b',String(state.buildings?.[key]||0),'building-summary-count'));
-      list.append(tile);
-    }
-    builds.append(list);
+  const banks=Number(state.buildings?.bank||0);
+  const metrics=elem('div','','build-metrics');
+  for(const [value,label] of [[cash(banks*.1)+'/s','BANK INCOME'],[String(banks)+'/3','BANK LEVEL'],[state.buildings?.defense?'ACTIVE':'NONE','DEFENCE']]){
+    const tile=elem('div','','build-metric');tile.append(elem('span',label),elem('strong',value));metrics.append(tile);
   }
+  builds.append(metrics);
+  const list=elem('div','','buildings-list');
+  for(const [key,label,icon,benefit] of [
+    ['barracks','Barracks','ico-barracks','Recruit infantry'],
+    ['workshop','Workshop','ico-autoshop','Purchase tanks'],
+    ['airport','Airport','ico-airport','L1 balloons · L2 bombers'],
+    ['bank','Bank','ico-bank','+$0.10/sec per level'],
+    ['defense','Defence','ico-fort','20% pre-attack HP loss']
+  ]){
+    const tile=elem('div','','building-summary');
+    const symbol=elem('span','','building-summary-icon');symbol.append(iconSvg(icon));
+    const info=elem('div','','building-summary-info');info.append(elem('strong',label),elem('small',benefit));
+    tile.append(symbol,info,elem('b','Lv '+Number(state.buildings?.[key]||0),'building-summary-count'));list.append(tile);
+  }
+  builds.append(list);
+}
+function renderProvinceIntel(){
+  const bar=$('provinceInfoBar');bar.hidden=!(selected&&game);if(bar.hidden)return;
+  const state=game.provinces?.[selected-1],province=definition.get(selected);if(!state||!province){bar.hidden=true;return;}
+  $('intelProvince').textContent=province.name;
+  const status=relationWith(state.owner);
+  $('intelRelation').textContent=`${nationNames[state.owner]||state.owner} · ${status.toUpperCase()}`;
+  const out=$('intelDetails');out.replaceChildren();
+  if(!state.visible){out.append(elem('span','Classified — border this province, ally with its owner, or scout within two provinces using a spy balloon.','intel-locked'));return;}
+  const makeGroup=(arr)=>{
+    const group=elem('div','','intel-group');
+    for(const [icon,value,label] of arr){
+      const entry=elem('span','','intel-entry');entry.title=label;entry.append(iconSvg(icon),document.createTextNode(String(value)));group.append(entry);
+    }
+    return group;
+  };
+  out.append(makeGroup([['ico-users',state.units?.infantry||0,'Infantry'],['ico-tank',state.units?.tank||0,'Tanks'],['ico-airport',state.units?.bomber||0,'Bombers']]));
+  out.append(elem('span','','intel-separator'));
+  out.append(makeGroup([['ico-barracks',state.buildings?.barracks||0,'Barracks'],['ico-autoshop',state.buildings?.workshop||0,'Workshop'],['ico-airport',state.buildings?.airport||0,'Airport'],['ico-bank',state.buildings?.bank||0,'Bank'],['ico-fort',state.buildings?.defense||0,'Defence']]));
+  const balloonCount=(game.spyBalloons||[]).filter(b=>b.province===selected).length;
+  if(balloonCount)out.append(makeGroup([['ico-airport',balloonCount,'Friendly spy balloons']]));
+  const allies=Object.entries(state.garrison||{}).filter(([,a])=>unitTotal(a)>0);
+  if(allies.length)out.append(elem('span',allies.map(([n,a])=>`${nationNames[n]} garrison: ${unitTotal(a)}`).join(' · '),'intel-garrison'));
 }
 function iconSvg(name){
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
@@ -574,48 +702,78 @@ function iconSvg(name){
   use.setAttribute('href','#'+name);svg.append(use);return svg;
 }
 const BUILDING_TYPES=[
-  {kind:'barracks',label:'Barracks',cost:20,icon:'ico-barracks',category:'INFANTRY',detail:'Trains 1 infantry every 45 seconds',rate:'1 INF / 45 SEC'},
-  {kind:'shop',label:'Auto shop',cost:90,icon:'ico-autoshop',category:'ARMOURED',detail:'Assembles 1 tank every 90 seconds',rate:'1 TANK / 90 SEC'},
-  {kind:'airport',label:'Airport',cost:175,icon:'ico-airport',category:'AIR FORCE',detail:'Produces 1 bomber every 240 seconds',rate:'1 BOMBER / 240 SEC'},
-  {kind:'bank',label:'Bank',cost:50,icon:'ico-bank',category:'ECONOMY',detail:'Generates $0.10 each second',rate:'+$0.10 / SEC'},
-  {kind:'defense',label:'Defence system',cost:200,icon:'ico-fort',category:'FORTIFICATION',detail:'Reduces an incoming army’s health by 20%',rate:'−20% ENEMY HP'}
+  {kind:'barracks',label:'Barracks',cost:20,max:1,icon:'ico-barracks',category:'INFANTRY',detail:'Unlocks infantry recruitment',rate:'LEVEL 1'},
+  {kind:'workshop',label:'Workshop',cost:90,max:1,icon:'ico-autoshop',category:'ARMOUR',detail:'Unlocks tank purchases',rate:'LEVEL 1'},
+  {kind:'airport',label:'Airport',cost:175,max:2,icon:'ico-airport',category:'AIR FORCE',detail:'Level 1: spy balloons · Level 2: bombers',rate:'MAX LEVEL 2'},
+  {kind:'bank',label:'Bank',cost:50,max:3,icon:'ico-bank',category:'ECONOMY',detail:'Each level generates $0.10 per second',rate:'MAX LEVEL 3'},
+  {kind:'defense',label:'Defence system',cost:200,max:1,icon:'ico-fort',category:'FORTIFICATION',detail:'Removes 20% incoming enemy army health',rate:'LEVEL 1'}
+];
+const TRAINING_TYPES=[
+  {kind:'infantry',label:'Infantry',cost:15,icon:'ico-users',requirement:'Requires Barracks Lv.1',level:()=>1},
+  {kind:'tank',label:'Tank',cost:75,icon:'ico-tank',requirement:'Requires Workshop Lv.1',level:()=>1},
+  {kind:'balloon',label:'Spy balloon',cost:200,icon:'ico-airport',requirement:'Requires Airport Lv.1',level:()=>1},
+  {kind:'bomber',label:'Bomber',cost:150,icon:'ico-airport',requirement:'Requires Airport Lv.2',level:()=>2}
 ];
 function renderBuildButtons(state){
   const out=$('buildOptions');out.replaceChildren();
-  const balance=Number(game?.money||0);
+  const balance=Number(game?.money||0),province=selected;
   const summary=elem('div','','construction-balance');
   const balanceLeft=elem('div','','construction-balance-left');
   const purse=elem('span','','balance-purse');purse.append(iconSvg('ico-coins'));
   const balanceText=elem('div','','balance-text');balanceText.append(elem('span','AVAILABLE TREASURY'),elem('strong',cash(balance)));
-  balanceLeft.append(purse,balanceText);
-  summary.append(balanceLeft,elem('small','Purchases apply to this province.','balance-help'));
+  balanceLeft.append(purse,balanceText);summary.append(balanceLeft,elem('small','Upgrades stay in this province.','balance-help'));
   out.append(summary);
   const list=elem('div','','build-catalogue');
   for(const bld of BUILDING_TYPES){
-    const count=state.buildings?.[bld.kind]||0;
-    const capped=bld.kind==='defense'&&count>=1;
-    const canAfford=balance>=bld.cost;
+    const count=state.buildings?.[bld.kind]||0,capped=count>=bld.max,canAfford=balance>=bld.cost;
     const card=elem('article','','building-shop-card'+(capped?' capped':'')+(!canAfford&&!capped?' unaffordable':''));
-    const top=elem('div','','building-shop-top');
-    const emblem=elem('div','','building-shop-emblem');emblem.append(iconSvg(bld.icon));
-    const heading=elem('div','','building-shop-heading');
-    heading.append(elem('span',bld.category,'building-shop-category'),elem('strong',bld.label));
-    const countBadge=elem('span',`${count} BUILT`,'building-count-pill');
-    top.append(emblem,heading,countBadge);
+    const top=elem('div','','building-shop-top'),emblem=elem('div','','building-shop-emblem');emblem.append(iconSvg(bld.icon));
+    const heading=elem('div','','building-shop-heading');heading.append(elem('span',bld.category,'building-shop-category'),elem('strong',bld.label));
+    top.append(emblem,heading,elem('span',`LV ${count} / ${bld.max}`,'building-count-pill'));
     const effect=elem('div','','building-shop-effect');effect.append(elem('span',bld.detail),elem('strong',bld.rate));
-    const bottom=elem('div','','building-shop-bottom');
-    const price=elem('div','','building-shop-price');price.append(elem('small','BUILD COST'),elem('strong',cash(bld.cost)));
-    const buy=createButton(capped?'MAX BUILT':canAfford?'Construct':'Not enough $',()=>{
-      // Capture the selected province when clicked; the server validates the order.
-      const province=selected;if(!province)return;
+    const bottom=elem('div','','building-shop-bottom'),price=elem('div','','building-shop-price');price.append(elem('small','UPGRADE COST'),elem('strong',cash(bld.cost)));
+    const buy=createButton(capped?'MAX LEVEL':canAfford?'Upgrade':'Need more $',()=>{
+      if(!selected||selected!==province)return;
       socket.emit('build',{province,kind:bld.kind});
-    },'building-shop-buy');
-    buy.disabled=capped||!canAfford;
-    buy.title=capped?'Only one defence system allowed':!canAfford?`Need ${cash(bld.cost-balance)} more`:`Build ${bld.label} in this province`;
-    bottom.append(price,buy);
-    card.append(top,effect,bottom);list.append(card);
+    },'building-shop-buy');buy.disabled=capped||!canAfford;
+    bottom.append(price,buy);card.append(top,effect,bottom);list.append(card);
   }
   out.append(list);
+  const recruit=elem('section','','troop-shop');recruit.append(elem('h3','RECRUIT & EQUIP UNITS'));
+  for(const unit of TRAINING_TYPES){
+    const built=unit.kind==='infantry'?state.buildings?.barracks:unit.kind==='tank'?state.buildings?.workshop:state.buildings?.airport;
+    const unlocked=Number(built||0)>=unit.level();
+    const card=elem('div','','troop-buy-card');
+    const emblem=elem('div','','troop-buy-emblem');emblem.append(iconSvg(unit.icon));
+    const info=elem('div','','troop-buy-info');info.append(elem('strong',`${unit.label} · ${cash(unit.cost)} each`),elem('small',unlocked?'Available for immediate purchase':unit.requirement));
+    const actions=elem('div','','troop-buy-actions');
+    for(const amount of [1,5]){
+      const button=createButton(`+${amount}`,()=>socket.emit('buyUnit',{province:selected,type:unit.kind,amount}),'troop-buy-button');
+      button.disabled=!unlocked||balance<unit.cost*amount;button.title=`Buy ${amount} ${unit.label.toLowerCase()} for ${cash(unit.cost*amount)}`;actions.append(button);
+    }
+    card.append(emblem,info,actions);recruit.append(card);
+  }
+  out.append(recruit);
+  const spies=(game?.spyBalloons||[]).filter(b=>b.nation===assigned);
+  const spyPanel=elem('section','','spy-section');spyPanel.append(elem('strong',`RECONNAISSANCE BALLOONS (${spies.length}/20)`));
+  spyPanel.append(elem('small','Balloons reveal province troops and buildings within a radius of two bordering provinces. Move them anywhere; placement is immediate.','intel-locked'));
+  for(const spy of spies){
+    const row=elem('div','','spy-item');row.append(elem('span',`Balloon #${spy.id} · ${definition.get(spy.province)?.name||'Unknown'}`));
+    const button=createButton('Station',()=>{
+      deployingBalloonId=spy.id;setPanel(null);notice('Select any map province to station the balloon.');
+    },'spy-deploy');row.append(button);spyPanel.append(row);
+  }
+  out.append(spyPanel);
+}
+function updateBuildCatalogue(state){
+  const balance=Number(game?.money||0);
+  // Avoid destroying purchase buttons mid-click during frequent state snapshots.
+  const levels=['barracks','workshop','airport','bank','defense'].map(k=>state.buildings?.[k]||0);
+  const affordability=[...BUILDING_TYPES.map(b=>b.cost),...TRAINING_TYPES.flatMap(u=>[u.cost,u.cost*5])].map(price=>Number(balance>=price));
+  const spyKey=(game?.spyBalloons||[]).filter(b=>b.nation===assigned).map(b=>b.id+':'+b.province).join(',');
+  const key=[selected,assigned,...levels,...affordability,spyKey].join('|');
+  if(key!==lastBuildRenderKey){lastBuildRenderKey=key;renderBuildButtons(state);}
+  else {const money=$('buildOptions')?.querySelector('.balance-text strong');if(money)money.textContent=cash(balance);}
 }
 function setArmyPreset(full){
   if(!selected||!game||!assigned)return;
@@ -642,7 +800,7 @@ function updateSidebar(){
   const terr=game?.provinces?.filter(t=>t.owner===assigned)||[];
   $('provinceCount').textContent=terr.length;
   $('troopCount').textContent=(terr.reduce((n,p)=>n+unitTotal(p.units),0)+(game?.provinces||[]).reduce((n,p)=>n+unitTotal(p.garrison?.[assigned]),0)).toLocaleString();
-  $('productionCount').textContent=terr.reduce((n,p)=>n+(p.buildings?.barracks||0),0)+' active barracks';
+  $('productionCount').textContent=terr.reduce((n,p)=>n+(p.buildings?.bank||0),0)+' active bank levels';
   $('playersOnline').textContent=(game?.occupied?.length||0)+' commanders';
   const card=$('selectionCard');card.hidden=!selected;
   $('emptyProvince').hidden=!!selected;
@@ -699,12 +857,12 @@ function updateSidebar(){
         const hasUnits=['infantry','tank','bomber'].some(t=>Number($('army'+t[0].toUpperCase()+t.slice(1)).value)>0);
         $('quickMove').disabled=!hasUnits;
         $('quickAttack').disabled=!hasUnits;
-        if(own)renderBuildButtons(state);
+        if(own)updateBuildCatalogue(state);
         // The order status and action buttons are managed by updateOrderUI().
-      }else{lastCountSource=null;draftTarget=null;if(own)renderBuildButtons(state);}
+      }else{lastCountSource=null;draftTarget=null;if(own)updateBuildCatalogue(state);}
     }
   }
-  updateOrderUI();
+  updateOrderUI();renderProvinceIntel();
   renderNationChoices();renderOrders();renderRankings();renderDiplomacy();renderChat();
   const log=$('warLog');log.replaceChildren();for(const entry of game?.log||[])log.append(elem('div',entry,'log-entry'));
 }
@@ -906,6 +1064,7 @@ function clearDeployment(){
 function clickWorld(cx,cy){
   if(!game||!map)return;
   const pos=worldFromClient(cx,cy),id=pixelProvince(pos.x,pos.y);
+  if(deployingBalloonId){if(!id)return notice('Choose a land province for the balloon.');socket.emit('stationBalloon',{id:deployingBalloonId,province:id});deployingBalloonId=null;notice('Spy balloon stationing order submitted.','success');return;}
   if(redirectOrderId){if(!id)return;redirectTarget=id;setPanel('orders');renderOrders();queueRender();return;}
   if(actionMode&&selected){
     if(!id)return notice('Choose a land province or press Cancel to abandon the order.');
@@ -992,8 +1151,8 @@ function updateDispatchButtons(){
   $('quickAttack').disabled=!selected||!hasUnits;
   updateOrderUI();
 }
-$('quickMove').onclick=()=>armAction('move');
-$('quickAttack').onclick=()=>armAction('attack');
+$('quickMove').onclick=()=>{ playSound('move',{volume:0.35}); armAction('move'); };
+$('quickAttack').onclick=()=>{ playSound('attack',{volume:0.32}); armAction('attack'); };
 $('confirmOrderBtn').onclick=()=>{
   const check=currentOrderValidity();
   if(!check.valid)return notice(check.message);
@@ -1004,6 +1163,7 @@ $('plannerCancel').onclick=cancelDraftOrder;
 $('quickBuild').onclick=()=>{
   if(!selected||!game)return;
   if(game.provinces?.[selected-1]?.owner!==assigned)return notice('You can only construct in your own provinces.');
+  playSound('build',{volume:0.28});
   setPanel('buildings');updateSidebar();
 };
 $('clearDestination').onclick=()=>{draftTarget=null;updateSidebar();queueRender();};
@@ -1015,9 +1175,9 @@ for(const btn of document.querySelectorAll('.rail-btn[data-panel]')){
   btn.onclick=()=>setPanel(activePanel===btn.dataset.panel?null:btn.dataset.panel);
 }
 $('panelClose').onclick=()=>setPanel(null);
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&actionMode){cancelDraftOrder();return;}if(e.key==='Escape'&&$('confirmModal').hidden&&$('nationModal').hidden){setPanel(null);}});
-$('chatForm').onsubmit=e=>{e.preventDefault();const input=$('chatInput');if(input.value.trim())socket.emit('chat',{to:$('chatRecipient').value,message:input.value.trim()});input.value='';};
-$('confirmYes').onclick=()=>{if(pendingOrder){socket.emit(pendingOrder.event,pendingOrder.data);if(pendingOrder.event==='move')clearDeployment();}pendingOrder=null;$('confirmModal').hidden=true;updateSidebar();queueRender();};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&deployingBalloonId){deployingBalloonId=null;notice('Balloon placement cancelled.');return;}if(e.key==='Escape'&&actionMode){cancelDraftOrder();return;}if(e.key==='Escape'&&$('confirmModal').hidden&&$('nationModal').hidden){setPanel(null);}});
+$('chatForm').onsubmit=e=>{e.preventDefault();const input=$('chatInput');if(input.value.trim()){socket.emit('chat',{to:$('chatRecipient').value,message:input.value.trim()});playSound('message',{volume:0.4});}input.value='';};
+$('confirmYes').onclick=()=>{if(pendingOrder){if(pendingOrder.event==='move') playSound(orderSound(pendingOrder.data.units,pendingOrder.data.kind),{volume:0.55}); socket.emit(pendingOrder.event,pendingOrder.data);if(pendingOrder.event==='move')clearDeployment();}pendingOrder=null;$('confirmModal').hidden=true;updateSidebar();queueRender();};
 $('confirmNo').onclick=()=>{pendingOrder=null;$('confirmModal').hidden=true;};
 $('joinForm').onsubmit=e=>{
   e.preventDefault();const code=$('roomInput').value.trim();
@@ -1035,7 +1195,7 @@ $('createRoom').onclick=()=>{
   $('joinError').hidden=true;socket.emit('createRoom');
 };
 $('roomButton').onclick=()=>{
-  if(room){if(!confirm('Leave your current campaign and choose another server? Your nation will be released.'))return;}
+  if(room){if(!confirm('Leave your current war and choose another server? Your nation will be released.'))return;}
   $('joinError').hidden=true;$('returnGame').hidden=!room;$('joinModal').hidden=false;
 };
 $('returnGame').onclick=()=>{$('joinModal').hidden=true;};
@@ -1045,10 +1205,13 @@ $('changeNation').onclick=showNationModal;
 $('spectateButton').onclick=()=>{$('nationModal').hidden=true;};
 $('restartButton').onclick=()=>{socket.emit('leaveRoom');$('victoryModal').hidden=true;};
 function updateCampaignClock(state){
-  const el=$('campaignDate');if(!el||!state)return;
+  if(!state)return;
   const day=Math.max(0,Number(state.campaignDay)||0);
-  const now=new Date(Date.UTC(1939,9,6)+day*86400000);
-  el.textContent=now.toLocaleDateString('en-GB',{timeZone:'UTC',day:'numeric',month:'short',year:'numeric'}).toUpperCase();
+  const date=new Date(Date.UTC(1939,9,6)+day*86400000);
+  $('campaignDate').textContent=date.toLocaleDateString('en-GB',{timeZone:'UTC',day:'numeric',month:'short',year:'numeric'}).toUpperCase();
+  const month=date.getUTCMonth();const season=month===11||month<=1?'winter':month<=4?'spring':month<=7?'summer':'autumn';
+  $('seasonBadge').textContent=`${season.toUpperCase()} · ${date.getUTCFullYear()}`;
+  setSeason(season);syncElapsed();
 }
 socket.on('connect',()=>{
   $('connectionDot').classList.add('online');$('connectionText').textContent='Server connected';
@@ -1056,7 +1219,7 @@ socket.on('connect',()=>{
 });
 socket.on('disconnect',()=>{$('connectionDot').classList.remove('online');$('connectionText').textContent='Server disconnected';notice('Connection lost; reconnecting…');});
 socket.on('joined',({code,public:isPublic})=>{
-  lastChatSeen=null;lastRequestsSeen='';$('chatBadge').hidden=true;$('diplomacyBadge').hidden=true;
+  lastChatSeen=null;lastRequestsSeen='';lastBuildRenderKey='';$('chatBadge').hidden=true;$('diplomacyBadge').hidden=true;
   $('returnGame').hidden=false;paintKey='';
   room=code;isPublicMatch=!!isPublic;$('roomCode').textContent=isPublic?'PUBLIC '+code:code;$('lobbyRoomCode').textContent=code;$('joinModal').hidden=true;showJoinOnConnect=false;assigned=null;selected=null;setPanel(null);
   $('spectateButton').hidden=isPublicMatch;
@@ -1067,7 +1230,7 @@ socket.on('assigned',({nation})=>{assigned=nation;if(nation)$('nationModal').hid
 socket.on('state',next=>{
   // When a new chat or diplomacy request arrives, flag its icon without opening a panel.
   const latestId=next.chat?.at(-1)?.id??0;
-  if(lastChatSeen!==null&&latestId>lastChatSeen&&activePanel!=='chat')$('chatBadge').hidden=false;
+  if(lastChatSeen!==null&&latestId>lastChatSeen){ if(activePanel!=='chat')$('chatBadge').hidden=false; playSound('message',{volume:0.32}); }
   lastChatSeen=Math.max(lastChatSeen??0,latestId);
   const requestKey=[...(next.requests||[]),...(next.peaceRequests||[])].filter(r=>r.to===assigned).map(r=>r.from+':'+r.to).sort().join('|');
   if(lastRequestsSeen!==''&&requestKey!==lastRequestsSeen&&requestKey&&activePanel!=='diplomacy')$('diplomacyBadge').hidden=false;
@@ -1077,36 +1240,43 @@ socket.on('state',next=>{
   game=next;
   if(!$('nationModal').hidden)renderNationChoices();
   $('publicWaiting').hidden=!(next.public&&!next.started);
-  if(next.public&&!next.started){$('waitingCount').textContent=`${next.playerCount} of 8 commanders connected. Match begins once all eight commanders select nations.`; $('waitingBar').style.width=(next.playerCount/8*100)+'%';$('waitingNation').textContent=assigned?`You will command ${nationNames[assigned]}.`:'Choose your nation to enter the campaign.';}
+  if(next.public&&!next.started){$('waitingCount').textContent=`${next.playerCount} of 8 commanders connected. Match begins once all eight commanders select nations.`; $('waitingBar').style.width=(next.playerCount/8*100)+'%';$('waitingNation').textContent=assigned?`You will command ${nationNames[assigned]}.`:'Choose your nation to enter the war.';}
   const now=Date.now();if(now-lastSidebarAt>500){lastSidebarAt=now;updateSidebar();}updateCountryAndOwner();queueRender();
   $('victoryModal').hidden=!next.winner;
   if(next.winner)$('winnerName').textContent=next.winner.nations.map(n=>nationNames[n]).join(' + ')+' VICTORIOUS';
   const eliminated=!!(assigned&&next.started&&next.provinces.every(p=>p.owner!==assigned));
-  if(eliminated&&!next.winner){$('victoryModal').hidden=false;$('winnerName').textContent='NATION ELIMINATED';$('victoryDescription').textContent='Your nation has lost every province. Return to the main menu to join another campaign.';$('restartButton').textContent='Return to main menu';}
+  if(eliminated&&!next.winner){$('victoryModal').hidden=false;$('winnerName').textContent='NATION ELIMINATED';$('victoryDescription').textContent='Your nation has lost every province. Return to the main menu to join another war.';$('restartButton').textContent='Return to main menu';}
   else {$('restartButton').textContent='Return to main menu';$('victoryDescription').textContent='Victory requires 51% of territories solo, or 67% of territories with an ally.';}
   updateCampaignClock(next);
 });
-socket.on('errorMessage',msg=>notice(String(msg)));
+socket.on('errorMessage',msg=>notice(String(msg),'error'));
+socket.on('buildAccepted',data=>{playSound('build',{volume:0.52});notice(`${data.kind} upgraded to level ${data.level}.`,'success');});
+socket.on('purchaseAccepted',data=>{playSound(data.type==='tank'?'tank':data.type==='bomber'?'plane':data.type==='balloon'?'plane':'infantry',{volume:0.56});notice(`Purchased ${data.amount} ${data.type}${data.amount>1?'s':''} for ${cash(data.total)}.`,'success');});
 socket.on('joinError',msg=>{showJoinError(String(msg));$('joinModal').hidden=false;});
-socket.on('orderAccepted',o=>notice(`Army dispatched · ETA ${fmtSeconds((o.arrivalAt-Date.now())/1000)}`));
-socket.on('leftRoom',()=>{room=null;assigned=null;game=null;paintKey='';isPublicMatch=false;selected=null;draftTarget=null;actionMode=null;redirectOrderId=null;redirectTarget=null;$('publicWaiting').hidden=true;$('joinModal').hidden=false;updateSidebar();queueRender();});
+socket.on('orderAccepted',o=>{playSound(orderSound(o.units||{[o.type]:o.count},o.kind),{volume:0.48});notice(`Army dispatched · ETA ${fmtSeconds((o.arrivalAt-Date.now())/1000)}`);});
+socket.on('leftRoom',()=>{room=null;assigned=null;game=null;paintKey='';isPublicMatch=false;selected=null;draftTarget=null;actionMode=null;redirectOrderId=null;redirectTarget=null;deployingBalloonId=null;$('publicWaiting').hidden=true;$('joinModal').hidden=false;updateSidebar();queueRender();});
 setInterval(()=>{
   for(const el of document.querySelectorAll('.order-remaining'))el.textContent=fmtSeconds((Number(el.dataset.arrival)-gameNow())/1000);
   // polling UI for money and timers: state updates from server every 100 ms or from game timer
+  syncElapsed();
 },250);
 (async function init(){
   try{
-    const [data,terrain,territories,borders]=await Promise.all([
+    const [data,terrain,territories,borders,infantryIcon,tankIcon,bomberIcon,balloonIcon]=await Promise.all([
       fetch('/map.json').then(async r=>{if(!r.ok)throw Error('Map unavailable');return r.json();}),
-      image('/assets/europe-map.png'),image('/assets/province-ids.png'),image('/assets/province-lines.png')
+      image('/assets/europe-map.png'),image('/assets/province-ids.png'),image('/assets/province-lines.png'),
+      image('/assets/units/infantry.svg'),image('/assets/units/tank.svg'),image('/assets/units/bomber.svg'),image('/assets/units/balloon.svg')
     ]);
-    map=data;mapImage=terrain;territoryImage=territories;borderImage=borders;
+    map=data;mapImage=terrain;territoryImage=territories;borderImage=borders; unitArt={infantry:infantryIcon,tank:tankIcon,bomber:bomberIcon,balloon:balloonIcon};
+    for(const season of ['spring','summer','autumn','winter']){try{seasonAssets[season]=await image('/assets/season-'+season+'.png');}catch(error){console.warn('Missing seasonal asset',season,error);}}
+    currentSeasonImage=seasonAssets[currentSeason]||null;
     for(const p of map.provinces)definition.set(p.id,p);
     for(const [id,nation] of Object.entries(map.nations)){nationColor[id]=nation.color;nationNames[id]=nation.name;}
     const scratch=document.createElement('canvas');scratch.width=map.width;scratch.height=map.height;
     const sc=scratch.getContext('2d',{willReadFrequently:true});sc.drawImage(territoryImage,0,0);
     idPixels=sc.getImageData(0,0,map.width,map.height).data;
     sc.clearRect(0,0,map.width,map.height);sc.drawImage(mapImage,0,0);originalPixels=sc.getImageData(0,0,map.width,map.height).data;
+    smoothBorderCanvas=buildSmoothBorderCanvas();
     updateSidebar();if(game){updateLabels();rebuildTint();}resize();if(assigned)focusNationOnMobile(assigned);new ResizeObserver(resize).observe(canvas.parentElement);
   }catch(e){console.error('Game initialization failed:',e);notice(`Map initialization error: ${e.message||e}`);}
 })();

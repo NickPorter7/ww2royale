@@ -63,3 +63,11 @@ test('1.12 mobile navigation uses docked controls and supports pinch',()=>{
   assert.match(js,/const activeTouches=new Map\(\)/);
   assert.match(js,/camera\.zoom=Math\.max\(\.75,Math\.min\(6,pinch\.zoom\*dist\/pinch\.dist\)\)/);
 });
+
+test('1.13 province information, season and elapsed HUD plus toast styles exist',()=>{
+  for(const id of ['provinceInfoBar','intelDetails','elapsedClock','seasonBadge','weatherLayer','toastStack'])assert.match(html,new RegExp(`id="${id}"`));
+  for(const season of ['winter','spring','summer','autumn'])assert.match(js,new RegExp(`season-`));
+  assert.match(js,/renderProvinceIntel/);
+  assert.match(js,/deployingBalloonId/);
+  assert.match(css,/toastFloat 3s/);
+});

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {createGame,relation,orderMovement,changeDiplomacy,rankings,viewFor,build,tick,findRoute,checkVictory,MOVE_MS} from '../server/game.js';
+import {createGame,relation,orderMovement,changeDiplomacy,rankings,viewFor,build,buyUnit,stationBalloon,SPY_RADIUS,UNIT_COST,tick,findRoute,checkVictory,MOVE_MS} from '../server/game.js';
 const map=JSON.parse(readFileSync(new URL('../shared/map.json',import.meta.url)));
 const codes=map.playableNations;
 const make=(now=100000)=>createGame(map,now,{random:()=>.5});
@@ -21,10 +21,57 @@ test('all provinces contiguous to something and IDs sequential',()=>{
     for(const j of p.neighbors)assert(map.provinces[j-1].neighbors.includes(p.id));
   }
 });
-test('bank money and production remain intact',()=>{
-  const g=make();const before=g.money.FR;
-  tick(g,101000);assert(g.money.FR>before);assert.equal(g.provinces[0].buildings.barracks,1);
-  const own=map.provinces.find(p=>p.nation==='FR');build(g,'FR',own.id,'barracks',101000);assert.equal(g.provinces[own.id-1].buildings.barracks,2);
+test('banks pay income but troops never auto-generate',()=>{
+  const g=make(),p=map.provinces.find(p=>p.nation==='FR');
+  const cash=g.money.FR,units=g.provinces[p.id-1].units.infantry;
+  tick(g,145000);
+  assert(g.money.FR>cash);assert.equal(g.provinces[p.id-1].units.infantry,units);
+  assert.equal(g.provinces[p.id-1].buildings.barracks,1);
+  assert.throws(()=>build(g,'FR',p.id,'barracks'),/Maximum/);
+});
+test('building levels unlock paid purchases and bank stops at level 3',()=>{
+  const g=make(),id=map.provinces.find(p=>p.nation==='FR').id;
+  g.money.FR=3000;
+  assert.throws(()=>buyUnit(g,'FR',id,'tank',1),/workshop/);
+  assert.throws(()=>buyUnit(g,'FR',id,'bomber',1),/airport/);
+  const first=g.provinces[id-1].units.infantry;
+  const money=g.money.FR;
+  buyUnit(g,'FR',id,'infantry',3);
+  assert.equal(g.provinces[id-1].units.infantry,first+3);
+  assert.equal(g.money.FR,money-3*UNIT_COST.infantry);
+  build(g,'FR',id,'workshop');buyUnit(g,'FR',id,'tank',2);
+  assert.equal(g.provinces[id-1].units.tank,2);
+  build(g,'FR',id,'airport');assert.throws(()=>buyUnit(g,'FR',id,'bomber',1),/level 2/);
+  buyUnit(g,'FR',id,'balloon',1);
+  build(g,'FR',id,'airport');buyUnit(g,'FR',id,'bomber',1);
+  assert.equal(g.provinces[id-1].units.bomber,1);
+  build(g,'FR',id,'bank');build(g,'FR',id,'bank');
+  assert.equal(g.provinces[id-1].buildings.bank,3);
+  assert.throws(()=>build(g,'FR',id,'bank'),/Maximum/);
+});
+test('spy balloon reveals its own and nearby provinces, but not to hostile viewers',()=>{
+  const g=make();g.money.FR=10000;
+  const home=map.provinces.find(p=>p.nation==='FR').id;
+  const foreign=map.provinces.find(p=>p.nation==='SU'&&!p.neighbors.some(n=>map.provinces[n-1].nation==='FR')).id;
+  build(g,'FR',home,'airport');
+  buyUnit(g,'FR',home,'balloon',1);
+  assert.equal(g.spyBalloons.length,1);
+  stationBalloon(g,'FR',g.spyBalloons[0].id,foreign);
+  assert.equal(viewFor(g,'FR').provinces[foreign-1].visible,true);
+  assert.equal(viewFor(g,'FR').spyBalloons.length,1);
+  assert.equal(viewFor(g,'ES').spyBalloons.length,0);
+  assert.throws(()=>stationBalloon(g,'ES',g.spyBalloons[0].id,home),/Invalid/);
+  const near=map.provinces[foreign-1].neighbors[0];assert(viewFor(g,'FR').provinces[near-1].visible);
+  assert.equal(SPY_RADIUS,2);
+});
+test('server validates troop purchases and balloon purchase limits',()=>{
+  const g=make(),id=map.provinces.find(p=>p.nation==='FR').id;
+  assert.throws(()=>buyUnit(g,'FR',id,'infantry',500),/funds/);
+  assert.throws(()=>buyUnit(g,'FR',id,'infantry',1.3),/Invalid/);
+  assert.throws(()=>buyUnit(g,'FR',id,'bomber',1),/airport/);
+  assert.throws(()=>buyUnit(g,'ES',id,'infantry',1),/own province/);
+  g.money.FR=10000;build(g,'FR',id,'airport');
+  assert.throws(()=>buyUnit(g,'FR',id,'balloon',6),/Maximum/);
 });
 test('neutral attack declares war only for a valid dispatch',()=>{
   const p=border('FR','DE'),target=dst(p,'DE'),g=make();assert(p&&target);

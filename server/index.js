@@ -4,7 +4,7 @@ import {createReadStream,readFileSync,statSync} from 'node:fs';
 import {createHash,randomUUID,randomInt} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
-import {createGame,relation,ally,changeDiplomacy,orderMovement,changeMovement,build,sendChat,tick,viewFor} from './game.js';
+import {createGame,relation,ally,changeDiplomacy,orderMovement,changeMovement,build,buyUnit,stationBalloon,sendChat,tick,viewFor} from './game.js';
 const map=JSON.parse(readFileSync(new URL('../shared/map.json',import.meta.url),'utf8'));
 const clientPath=path.resolve(fileURLToPath(new URL('../client/',import.meta.url)));
 const rooms=new Map(),connections=new Map();
@@ -47,7 +47,7 @@ function maybeStartPublic(room){
   if(room.public&&!room.started&&room.players.size===8&&active(room).length===8){
     room.started=true;
     const now=Date.now();room.g.lastTick=now;room.g.campaignStartAt=now;
-    for(const p of room.g.provinces){p.production.barracks=now+45000;p.production.shop=now+90000;p.production.airport=now+240000;}
+    // Production is purchase-based; no automatic troop timers to reset.
   }
 }
 function chooseAvailableNation(room,client,data){
@@ -131,7 +131,15 @@ function guardRoom(client,type,data){
     }
     if(type==='build'){
       if(!data||typeof data!=='object'||!Number.isSafeInteger(data.province))throw Error('Invalid construction command.');
-      build(room.g,nation,data.province,data.kind,now);broadcast(room);return;
+      const structure=build(room.g,nation,data.province,data.kind,now);send(client.id,'buildAccepted',{province:data.province,kind:data.kind,level:structure.buildings[data.kind]});broadcast(room);return;
+    }
+    if(type==='buyUnit'){
+      if(!data||typeof data!=='object'||!Number.isSafeInteger(data.province))throw Error('Invalid troop purchase.');
+      const purchase=buyUnit(room.g,nation,data.province,data.type,data.amount);send(client.id,'purchaseAccepted',purchase);broadcast(room);return;
+    }
+    if(type==='stationBalloon'){
+      if(!data||!Number.isSafeInteger(data.id)||!Number.isSafeInteger(data.province))throw Error('Invalid spy balloon order.');
+      stationBalloon(room.g,nation,data.id,data.province);broadcast(room);return;
     }
     if(type==='changeMovement'){
       if(!data||typeof data!=='object')throw Error('Invalid movement change.');
