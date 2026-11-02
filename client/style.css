@@ -249,3 +249,64 @@
  .order-planner .planner-unit-symbol svg{width:20px;height:20px}
  .order-planner .planner-composer .unit-pick output{font-size:11px;width:38px}
 }
+
+/* WW2 Royale 1.12 — 1939 vexillology and accessible mobile controls. */
+.nation-flag{display:inline-block;width:35px;height:23px;flex:0 0 35px;object-fit:cover;vertical-align:middle;border:1px solid rgba(255,255,255,.5);border-radius:3px;box-shadow:0 2px 7px #0008;background:#ddd}
+.province-owner{display:flex;align-items:center;gap:10px;border-left:0;padding-left:0;min-height:26px}
+.province-owner .nation-flag{width:31px;height:21px;flex-basis:31px}
+.panel-identity{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:750;color:#dbe3dd;margin-top:8px}
+.panel-identity[hidden]{display:none}
+.panel-identity .nation-flag{width:26px;height:18px;flex-basis:26px}
+.rank-row .nation-flag{width:29px;height:19px;flex:0 0 29px}
+.nation-choice .nation-flag{width:41px;height:27px;flex:0 0 41px}
+.diplomacy-heading{display:flex;align-items:center;gap:8px}
+.diplomacy-heading .nation-flag{width:34px;height:23px;flex:0 0 34px}
+.request-card .nation-flag{width:31px;height:21px;flex:0 0 31px}
+.chat-line .nation-flag{width:26px;height:17px;vertical-align:middle;margin-right:8px}
+.identity-row .flag{width:auto;height:auto;background:none;border-radius:0}
+.identity-row .nation-flag{width:40px;height:27px}
+
+@media (max-width: 700px), (pointer:coarse) and (max-width: 920px){
+  body{overscroll-behavior:none}
+  .topbar{height:61px;padding:0 9px;gap:7px}
+  .layout{height:calc(100dvh - 61px)}
+  .brand-main{font-size:13px}.brand-seal,.brand-sub,.header-center{display:none}
+  .header-right{gap:7px}.hud-stat strong{font-size:13px}
+  .hud-stat-label{font-size:8px}.header-button{min-height:40px}
+  .tool-rail{position:absolute;left:0;right:0;bottom:0;top:auto;width:100%;height:calc(66px + env(safe-area-inset-bottom, 0px));display:flex;flex-direction:row;align-items:flex-start;gap:2px;overflow-x:auto;overflow-y:hidden;padding:3px 8px calc(3px + env(safe-area-inset-bottom, 0px));border-radius:12px 12px 0 0;z-index:12;scrollbar-width:none}
+  .tool-rail::-webkit-scrollbar{display:none}
+  .rail-top,.rail-spacer{display:none}
+  .rail-btn{flex:0 0 66px;width:66px;height:55px;min-height:55px;gap:2px;padding:3px 1px;border-radius:8px;touch-action:manipulation}
+  .rail-btn>svg{height:21px;width:21px}.rail-btn span{font-size:9px}
+  .floating-panel{position:absolute;left:8px;right:8px;bottom:calc(72px + env(safe-area-inset-bottom, 0px));top:auto;max-height:min(56dvh,490px);height:auto;min-height:0;width:auto;z-index:11;border-radius:14px}
+  .panel-head{padding:11px 15px}.panel-head h2{font-size:16px;margin-top:4px}
+  .panel-scroll{padding:12px 14px;max-height:calc(56dvh - 74px)}
+  .quick-command{bottom:calc(75px + env(safe-area-inset-bottom, 0px));left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100% - 12px);gap:6px;z-index:10}
+  .quick-command .quick-action{flex:0 0 100px;width:100px;min-height:51px;height:51px;max-height:51px;border-radius:9px;font-size:12px;gap:6px}
+  .quick-command .quick-action-confirm,.quick-command .quick-action-cancel{flex-basis:138px;width:138px}
+  .order-planner{left:50%;bottom:calc(140px + env(safe-area-inset-bottom, 0px));transform:translateX(-50%);width:min(330px,calc(100% - 30px));z-index:10}
+  .order-planner .planner-composer .unit-pick{min-height:40px;grid-template-columns:31px minmax(0,1fr) 49px;gap:10px}
+  .order-planner .planner-unit-symbol,.order-planner .planner-unit-symbol svg{width:28px;height:28px}
+  .order-planner .planner-composer .unit-pick output{font-size:14px;width:48px}
+  .order-planner .planner-composer .unit-pick input[type=range]{height:9px}
+  .order-planner .planner-composer .unit-pick input[type=range]::-webkit-slider-thumb{width:26px;height:26px}
+  .map-bottom-left{left:auto;right:10px;top:10px;bottom:auto;z-index:7}
+  .map-top-right{display:none}.map-counter{display:none}.map-bottom-tip{display:none}
+  .hover-tip{display:none!important}
+  .toast{max-width:calc(100% - 18px);bottom:calc(204px + env(safe-area-inset-bottom,0px));font-size:12px}
+  .nation-choices{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  .nation-choice{min-height:55px;padding:9px 7px;font-size:11px;gap:7px}
+  .nation-choice .nation-flag{width:33px;height:22px;flex-basis:33px}
+  .modal{padding:20px 15px;max-height:calc(100dvh - 30px);overflow-y:auto}
+  .lobby-grid{grid-template-columns:1fr;gap:8px}.lobby-choice{min-height:unset;padding:13px}
+  .lobby-choice p{font-size:11px;margin-bottom:9px}
+  .lobby-choice h3{margin:4px 0}
+  .backdrop{padding:8px;align-items:safe center}
+  button,select,.wide-input{touch-action:manipulation}
+}
+@media(max-width:365px){
+  .quick-command .quick-action{flex-basis:89px;width:89px;font-size:11px}
+  .quick-command .quick-action-confirm,.quick-command .quick-action-cancel{flex-basis:128px;width:128px}
+  .brand-main{font-size:11px}.room-value{font-size:11px}
+  .nation-choices{grid-template-columns:1fr}
+}

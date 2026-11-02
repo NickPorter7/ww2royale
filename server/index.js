@@ -9,7 +9,7 @@ const map=JSON.parse(readFileSync(new URL('../shared/map.json',import.meta.url),
 const clientPath=path.resolve(fileURLToPath(new URL('../client/',import.meta.url)));
 const rooms=new Map(),connections=new Map();
 const MAX_PAYLOAD=16384;
-const MIME={'.html':'text/html; charset=utf-8','.js':'application/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.png':'image/png','.jpg':'image/jpeg'};
+const MIME={'.html':'text/html; charset=utf-8','.js':'application/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.svg':'image/svg+xml'};
 const pair=(a,b)=>[a,b].sort().join(':');
 function roomCreate(code,isPublic=false){const g=createGame(map);return {code,g,public:isPublic,started:!isPublic,players:new Map(),lastAction:new Map(),prefs:new Map()};}
 // Generate a genuinely random, unique 6-digit code from currently active rooms.

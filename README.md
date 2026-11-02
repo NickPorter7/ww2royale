@@ -145,3 +145,21 @@ Removed repeating ocean fill beyond the map boundaries and restored the original
 - Movement interpolation uses a monotonic server-synchronized clock.
 - Mixed armies still travel at the slowest included unit speed: infantry 10 s, tanks 20 s, bombers 7 s per province.
 - All existing map/terrain and gameplay rules remain unchanged.
+
+## Version 1.12 — military markers, historical identifiers and mobile navigation
+
+- **Army icons:** moving-army markers use infantry, tank and bomber silhouettes instead of arrowheads. If an army contains several troop types, the icon priority is bomber, then tank, then infantry. Troop counts and route countdowns remain.
+- **Historical flags:** 17 locally hosted vector flag illustrations, intended to represent national flags in use around 6 October 1939. Some emblems are deliberately simplified to remain readable at small sizes. They appear alongside nation names in country selection, army/buildings ownership details, diplomacy, messaging, rankings and panel identity.
+- **Order controls:** choosing a province no longer opens the Army menu; open it manually via the Army icon. Build opens the Buildings menu. Moving to a neutral or hostile nation automatically stages an Attack order. Neutral attacks require an explicit **Declare war and attack** confirmation; hostile armies already at war dispatch with the ordinary Confirm button.
+- **Ghost previews:** selecting a destination draws a translucent animated route and unit marker. Full-strength movement visuals appear after dispatch. The double destination highlight is removed.
+- **1939 city names:** province names now correspond to historical towns and cities, with each of the 17 countries' period capital present in at least one province. City-to-province placement is approximate because the background is stylized rather than a georeferenced map.
+- **Map fixes:** a detached France-owned fragment on the British island now belongs to Britain, and an isolated Soviet-owned ocean fragment is removed from the interactive map. 107 province IDs and the existing gameplay rules are retained.
+- **Phone controls:** horizontal bottom navigation dock, bottom-sheet menus, thumb-friendly three sliders, larger action buttons, two-finger pinch zoom, one-finger panning, and automatic zoom toward the selected nation on narrow screens.
+
+### Deploy to ww2royale.com
+
+Upload the **contents of this version's folder** into the same GitHub directory currently used as your Render service root, preserving `package.json`, `client/`, `server/`, `shared/`, and the new `client/assets/flags/` files. Commit and deploy the latest commit on Render. The deployment start command remains `npm start`.
+
+### Testing and limitations
+
+The server, static assets, map validity and automated gameplay tests pass. A live graphical browser-to-server session could not be tested in this environment because browser access to localhost was blocked. A separate offline Chromium layout check showed the iPhone-sized toolbar and sliders fitting within the viewport. Test both mouse and touch interactions in the live game before broad public rollout.

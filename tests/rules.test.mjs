@@ -66,7 +66,7 @@ test('1939 nonplayable neighbours and Fascist Italy display name',()=>{
  assert.equal(map.nations.IT.name,'Fascist Italy');
  const itNames=map.provinces.filter(p=>p.nation==='IT').map(p=>p.name);
  assert.equal(new Set(itNames).size,10);
- assert(itNames.includes('Lombardy')&&itNames.includes('Lazio')&&itNames.includes('Sicily-Sardinia'));
+ assert(itNames.includes('Rome')&&itNames.includes('Milan')&&itNames.includes('Palermo'));
  const adjacent=(a,b)=>map.provinces.some(p=>p.nation===a&&p.neighbors.some(id=>map.provinces[id-1].nation===b));
  for(const [a,b] of [['CH','FR'],['CH','DE'],['CH','IT'],['SK','HU'],['SK','DE'],['YU','IT'],['YU','HU'],['BG','YU'],['BG','RO']])assert(adjacent(a,b),`${a} must border ${b}`);
 });
@@ -76,4 +76,13 @@ test('Swiss borders are nonrectangular and provinces remain hittable',()=>{
  const uniqueX=new Set(vertices.map(p=>p[0])),uniqueY=new Set(vertices.map(p=>p[1]));
  assert(uniqueX.size>=30&&uniqueY.size>=20,'Swiss boundaries should be organic rather than square');
  for(const p of swiss)assert(p.paths.some(loop=>loop.length>=5));
+});
+
+test('every nation has its 1939 capital and unique city-based province names',()=>{
+  for(const [code,n] of Object.entries(map.nations)){
+    const own=map.provinces.filter(p=>p.nation===code);
+    assert(own.some(p=>p.name===n.capital),`${code} missing capital ${n.capital}`);
+    assert.equal(new Set(own.map(p=>p.name)).size,own.length);
+    assert(own.every(p=>!/\d\d$/.test(p.name)));
+  }
 });

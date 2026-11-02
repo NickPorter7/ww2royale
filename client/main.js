@@ -67,7 +67,7 @@ async function copyRoomCode(){
 }
 
 let toastTimeout;
-const camera = {zoom:1,panX:0,panY:0,scale:1,tx:0,ty:0,cw:0,ch:0};
+const camera = {zoom:window.matchMedia('(max-width:700px)').matches?2.9:1,panX:0,panY:0,scale:1,tx:0,ty:0,cw:0,ch:0};
 let renderPending = false;
 // Compare incoming order times with a monotonic clock synchronized to the server.
 let gameClockServerAt = 0, gameClockClientAt = 0;
@@ -93,6 +93,19 @@ function updateTransform(){
   camera.tx=(camera.cw-map.width*camera.scale)/2+camera.panX;
   camera.ty=(camera.ch-map.height*camera.scale)/2+camera.panY;
 }
+function focusNationOnMobile(nation){
+  if(!map||!nation||!window.matchMedia('(max-width:700px)').matches)return;
+  const provinces=map.provinces.filter(p=>p.nation===nation);
+  if(!provinces.length)return;
+  const weight=provinces.reduce((a,p)=>a+Math.max(1,p.area),0);
+  const x=provinces.reduce((a,p)=>a+p.x*Math.max(1,p.area),0)/weight;
+  const y=provinces.reduce((a,p)=>a+p.y*Math.max(1,p.area),0)/weight;
+  camera.zoom=2.9;
+  const scale=Math.min(camera.cw/map.width,camera.ch/map.height)*camera.zoom;
+  camera.panX=(map.width/2-x)*scale;
+  camera.panY=(map.height/2-y)*scale;
+  queueRender();
+}
 function worldFromClient(clientX,clientY){
   const r=canvas.getBoundingClientRect();updateTransform();
   return {x:(clientX-r.left-camera.tx)/camera.scale,y:(clientY-r.top-camera.ty)/camera.scale,
@@ -108,6 +121,39 @@ function queueRender(){
   requestAnimationFrame(()=>{renderPending=false;draw();});
 }
 function hexToRgb(hex){return [1,3,5].map(i=>parseInt(hex.substring(i,i+2),16));}
+// Local historical flag assets; never sourced from a remote image server.
+function nationFlag(code,extraClass=''){
+  const flag=document.createElement('img');flag.className='nation-flag '+extraClass;
+  flag.alt=(nationNames[code]||code||'Unknown')+' · 1939 flag';
+  flag.src=code&&map?.nations[code]?`/assets/flags/${code}.svg`:'/assets/flags/GB.svg';
+  flag.loading='lazy';flag.decoding='async';return flag;
+}
+function showNationIdentity(element,code,extra=''){
+  element.replaceChildren(nationFlag(code),document.createTextNode((nationNames[code]||code||'Unknown')+(extra?' · '+extra:'')));
+}
+function effectiveOrderKind(){
+  if(!draftTarget||!game)return actionMode;
+  const rel=relationWith(game.provinces[draftTarget-1]?.owner);
+  return rel==='neutral'||rel==='war'?'attack':'move';
+}
+function selectedArmyIcon(units){return units?.bomber>0?'bomber':units?.tank>0?'tank':'infantry';}
+function drawUnitIcon(x,y,type,tint,alpha=1){
+  ctx.save();ctx.globalAlpha*=alpha;ctx.translate(x,y);
+  ctx.fillStyle='rgba(8,18,23,.95)';ctx.strokeStyle=tint;ctx.lineWidth=1.8;
+  ctx.beginPath();ctx.arc(0,0,16,0,Math.PI*2);ctx.fill();ctx.stroke();
+  ctx.fillStyle=tint;ctx.strokeStyle=tint;ctx.lineWidth=2.2;ctx.lineCap='round';ctx.lineJoin='round';
+  if(type==='bomber'){
+    ctx.beginPath();ctx.moveTo(0,-12);ctx.lineTo(3,-3);ctx.lineTo(13,3);ctx.lineTo(13,7);ctx.lineTo(3,5);ctx.lineTo(3,10);ctx.lineTo(7,12);ctx.lineTo(-7,12);ctx.lineTo(-3,10);ctx.lineTo(-3,5);ctx.lineTo(-13,7);ctx.lineTo(-13,3);ctx.lineTo(-3,-3);ctx.closePath();ctx.fill();
+  }else if(type==='tank'){
+    ctx.fillRect(-11,0,22,7);ctx.fillRect(-8,-6,14,8);ctx.fillRect(4,-5,9,3);
+    ctx.fillStyle='#142630';for(let a=-7;a<=7;a+=7){ctx.beginPath();ctx.arc(a,4,1.5,0,Math.PI*2);ctx.fill();}
+  }else{
+    ctx.beginPath();ctx.arc(0,-7,4,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.moveTo(0,-2);ctx.lineTo(0,9);ctx.moveTo(-7,2);ctx.lineTo(7,2);ctx.moveTo(0,9);ctx.lineTo(-6,13);ctx.moveTo(0,9);ctx.lineTo(6,13);ctx.stroke();
+  }
+  ctx.restore();
+}
+
 
 /* The original textured image is ALWAYS the base layer. Only conquered
    provinces receive a recolouring overlay. Preserve the original texture's
@@ -356,10 +402,9 @@ function drawMovements(){
     for(let j=i+1;j<pts.length;j++)ctx.lineTo(pts[j].x,pts[j].y);
     ctx.lineWidth=3.6;ctx.strokeStyle='rgba(6,14,20,.9)';ctx.setLineDash([]);ctx.stroke();
     ctx.lineWidth=2.2;ctx.strokeStyle=tint;ctx.setLineDash([11,8]);ctx.lineDashOffset=-now/85;ctx.stroke();ctx.setLineDash([]);
-    const theta=Math.atan2(pts[i+1].y-pts[i].y,pts[i+1].x-pts[i].x);
-    ctx.save();ctx.translate(x,y);ctx.rotate(theta);
-    ctx.beginPath();ctx.moveTo(12,0);ctx.lineTo(-9,-7);ctx.lineTo(-4,0);ctx.lineTo(-9,7);ctx.closePath();
-    ctx.fillStyle=tint;ctx.strokeStyle='#18232a';ctx.lineWidth=2.4;ctx.fill();ctx.stroke();ctx.restore();
+    // The highest-tier unit present determines the moving-army icon:
+    // bomber > tank > infantry. No triangular route arrowhead.
+    drawUnitIcon(x,y,selectedArmyIcon(order.units||{[order.type]:order.count}),tint);
     // Animated army counter rides with the arrow instead of sitting at its source.
     const movingCount=unitTotal(order.units||{[order.type]:order.count});
     const token=String(movingCount);
@@ -375,6 +420,49 @@ function drawMovements(){
     ctx.fillStyle='#fff3d5';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(label,x,y-26);
   }
   ctx.restore();
+}
+// Ghost order preview: route and advancing icon are intentionally faint until
+// the player confirms. No second highlighted province outline is drawn.
+function draftRoute(){
+  if(!game||!selected||!draftTarget)return [];
+  const from=definition.get(selected),to=definition.get(draftTarget);
+  if(!from||!to)return [];
+  if(armyFormUnits().infantry===0 && armyFormUnits().tank===0 && armyFormUnits().bomber>0)
+    return [from,to];
+  const source=selected,goal=draftTarget,queue=[source],parent=new Map([[source,null]]);
+  while(queue.length){
+    const cur=queue.shift();if(cur===goal)break;
+    for(const n of definition.get(cur)?.neighbors||[]){
+      if(parent.has(n))continue;
+      const owner=game.provinces[n-1]?.owner,rel=relationWith(owner);
+      if(n!==goal&&!['self','ally'].includes(rel))continue;
+      parent.set(n,cur);queue.push(n);
+    }
+  }
+  if(!parent.has(goal))return [from,to];
+  const path=[];for(let cur=goal;cur!==null;cur=parent.get(cur))path.push(definition.get(cur));
+  return path.reverse();
+}
+function drawDraftRoute(){
+  if(!selected||!draftTarget||!actionMode)return;
+  const pts=draftRoute();if(pts.length<2)return;
+  const hostile=effectiveOrderKind()==='attack';
+  const tint=hostile?'#ff9892':'#eac978';
+  ctx.save();ctx.globalAlpha=.45;ctx.lineWidth=2.8;ctx.strokeStyle=tint;
+  ctx.lineCap='round';ctx.setLineDash([9,9]);ctx.lineDashOffset=-performance.now()/100;ctx.beginPath();
+  ctx.moveTo(pts[0].x,pts[0].y);for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i].x,pts[i].y);ctx.stroke();ctx.setLineDash([]);
+  // A faint arrow at the destination communicates intended direction.
+  const end=pts.at(-1),prev=pts.at(-2),angle=Math.atan2(end.y-prev.y,end.x-prev.x);
+  ctx.save();ctx.translate(end.x,end.y);ctx.rotate(angle);ctx.fillStyle=tint;
+  ctx.beginPath();ctx.moveTo(8,0);ctx.lineTo(-8,-5);ctx.lineTo(-8,5);ctx.closePath();ctx.fill();ctx.restore();
+  let total=0;const lengths=[];for(let i=1;i<pts.length;i++){const d=Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y);lengths.push(d);total+=d;}
+  let travelled=(performance.now()/21)%Math.max(1,total),x=pts[0].x,y=pts[0].y;
+  for(let i=0;i<lengths.length;i++){
+    if(travelled<=lengths[i]){const t=travelled/Math.max(1,lengths[i]);x=pts[i].x+(pts[i+1].x-pts[i].x)*t;y=pts[i].y+(pts[i+1].y-pts[i].y)*t;break;}
+    travelled-=lengths[i];
+  }
+  drawUnitIcon(x,y,selectedArmyIcon(armyFormUnits()),tint,.85);
+  ctx.restore();queueRender();
 }
 function drawTroops(){
   if(!game)return;
@@ -409,8 +497,8 @@ function draw(){
   if(!map||!mapImage)return;updateTransform();
   ctx.save();ctx.translate(camera.tx,camera.ty);ctx.scale(camera.scale,camera.scale);
   ctx.drawImage(mapImage,0,0);if(tintCanvas)ctx.drawImage(tintCanvas,0,0);
-  if(borderImage)ctx.drawImage(borderImage,0,0);if(territoryBorderCanvas)ctx.drawImage(territoryBorderCanvas,0,0);drawLabels();drawMovements();
-  drawOutline(hovered,'rgba(251,236,157,.8)',2.7);drawOutline(selected,'#ffdc87',4);drawOutline(draftTarget,'#85eeec',3);drawOutline(redirectTarget,'#ffbc76',3);
+  if(borderImage)ctx.drawImage(borderImage,0,0);if(territoryBorderCanvas)ctx.drawImage(territoryBorderCanvas,0,0);drawLabels();drawMovements();drawDraftRoute();
+  drawOutline(hovered,'rgba(251,236,157,.8)',2.7);drawOutline(draftTarget?null:selected,'#ffdc87',4);drawOutline(redirectTarget,'#ffbc76',3);
   drawTroops();ctx.restore();if(game?.movements?.length)queueRender();
 }
 function createButton(label,action,cls=''){
@@ -546,7 +634,8 @@ function updateSidebar(){
   if(!map)return;
   $('myNation').textContent=assigned?nationNames[assigned]:'Spectator';
   $('changeNation').disabled=!!assigned;
-  $('myFlag').style.backgroundColor=assigned?nationColor[assigned]:'#536168';
+  $('myFlag').replaceChildren(assigned?nationFlag(assigned):document.createTextNode('—'));
+  const badge=$('panelIdentity');if(badge){badge.hidden=!assigned;if(assigned)showNationIdentity(badge,assigned);}
   $('moneyValue').textContent=assigned?cash(game?.money):'—';
   const rank=game?.rankings?.find(x=>x.nation===assigned);
   $('placementValue').textContent=rank?`#${rank.place} / ${Object.keys(map.nations).length}`:'—';
@@ -564,8 +653,8 @@ function updateSidebar(){
     const p=definition.get(selected),state=game?.provinces?.[selected-1];
     $('selectionName').textContent=p?.name||'Unknown';
     $('buildingProvinceName').textContent=p?.name||'Unknown';
-    $('selectionOwner').textContent=state?nationNames[state.owner]:'';
-    $('buildingProvinceOwner').textContent=state?nationNames[state.owner]:'';
+    if(state)showNationIdentity($('selectionOwner'),state.owner,map.nations[state.owner]?.capital===p?.name?'CAPITAL':'');
+    if(state)showNationIdentity($('buildingProvinceOwner'),state.owner,map.nations[state.owner]?.capital===p?.name?'CAPITAL':'');
     const own=state?.owner===assigned;
     const fromAlly=state?.owner!==assigned&&relationWith(state?.owner)==='ally'&&unitTotal(state?.garrison?.[assigned])>0;
     const visible=!!state?.visible;
@@ -606,7 +695,7 @@ function updateSidebar(){
         $('clearDestination').hidden=!draftTarget;
         const rel=draftTarget?relationWith(game.provinces[draftTarget-1]?.owner):null;
         $('destinationName').textContent=draftTarget?definition.get(draftTarget)?.name||'Unknown':'—';
-        $('destinationRelation').textContent=rel==='war'?'Hostile — Attack order required':rel==='ally'?'Allied territory — Move':rel==='self'?'Owned territory — Move':rel==='neutral'?'Neutral — attacking automatically declares war':'Select another province';
+        $('destinationRelation').textContent=rel==='war'?'Hostile — Attack order':rel==='ally'?'Allied territory — Move':rel==='self'?'Owned territory — Move':rel==='neutral'?'Neutral — attacking automatically declares war':'Select another province';
         const hasUnits=['infantry','tank','bomber'].some(t=>Number($('army'+t[0].toUpperCase()+t.slice(1)).value)>0);
         $('quickMove').disabled=!hasUnits;
         $('quickAttack').disabled=!hasUnits;
@@ -623,7 +712,7 @@ function renderRankings(){
   const list=$('leaderboard');list.replaceChildren();
   for(const rank of game?.rankings||[]){
     const row=elem('div','', 'rank-row');const color=elem('span','','rank-color');color.style.background=nationColor[rank.nation];
-    row.append(color,elem('span',`${rank.place}. ${nationNames[rank.nation]}`,'rank-name'),elem('span',`${rank.score.toFixed(1)} pts · ${rank.provinces} provinces`,'rank-count'));
+    row.append(nationFlag(rank.nation),elem('span',`${rank.place}. ${nationNames[rank.nation]}`,'rank-name'),elem('span',`${rank.score.toFixed(1)} pts · ${rank.provinces} provinces`,'rank-count'));
     list.append(row);
   }
 }
@@ -636,7 +725,7 @@ function renderNationChoices(){
   for(const id of Object.keys(map.nations).filter(id=>map.nations[id].playable)){
     const occupied=game?.occupied?.includes(id)&&assigned!==id;
     const b=createButton(`${nationNames[id]} ${occupied?'(TAKEN)':''}`,()=>socket.emit('chooseNation',id),'nation-choice');b.disabled=!!occupied||!!assigned;
-    const swatch=elem('span','','swatch');swatch.style.background=nationColor[id];b.prepend(swatch);out.append(b);
+    b.prepend(nationFlag(id));out.append(b);
   }
 }
 function renderDiplomacy(){
@@ -650,7 +739,7 @@ function renderDiplomacy(){
   }
   if(selector.selectedIndex<0)selector.selectedIndex=0;
   const n=selector.value,rel=relationWith(n);
-  panel.append(elem('p',`Relationship with ${nationNames[n]}: ${rel.toUpperCase()}`,'diplomacy-heading'));
+  const relationHeading=elem('p','', 'diplomacy-heading');relationHeading.append(nationFlag(n),document.createTextNode(` ${nationNames[n]} · ${rel.toUpperCase()}`));panel.append(relationHeading);
   const buttons=elem('div','','diplomacy-actions');
   const add=(txt,action,cls='')=>buttons.append(createButton(txt,()=>socket.emit('diplomacy',{action,target:n}),cls));
   if(rel==='ally'){add('Break alliance','breakAlliance','danger');}
@@ -660,7 +749,7 @@ function renderDiplomacy(){
   const inbox=[...(game?.requests||[]).filter(x=>x.to===assigned).map(r=>({...r,kind:'Ally'})),
     ...(game?.peaceRequests||[]).filter(x=>x.to===assigned).map(r=>({...r,kind:'Peace'}))];
   for(const item of inbox){const row=elem('div',`${nationNames[item.from]}: ${item.kind} request`,'request-card');
-    row.append(createButton('Accept',()=>socket.emit('diplomacy',{action:item.kind==='Ally'?'acceptAlly':'acceptPeace',target:item.from})),
+    row.prepend(nationFlag(item.from));row.append(createButton('Accept',()=>socket.emit('diplomacy',{action:item.kind==='Ally'?'acceptAlly':'acceptPeace',target:item.from})),
       createButton('Decline',()=>socket.emit('diplomacy',{action:item.kind==='Ally'?'declineAlly':'declinePeace',target:item.from})));
     panel.append(row);
   }
@@ -678,7 +767,7 @@ function renderChat(){
   view.replaceChildren();
   for(const m of game?.chat||[]){
     const line=elem('div','', 'chat-line');
-    const name=elem('strong',nationNames[m.nation]+(m.to==='all'?' [GLOBAL]':' [PRIVATE → '+nationNames[m.to]+']')+': ');name.style.color=nationColor[m.nation];line.append(name,document.createTextNode(m.text));view.append(line);
+    const name=elem('strong',nationNames[m.nation]+(m.to==='all'?' [GLOBAL]':' [PRIVATE → '+nationNames[m.to]+']')+': ');line.append(nationFlag(m.nation),name,document.createTextNode(m.text));view.append(line);
   }
   if(stick)view.scrollTop=view.scrollHeight;
 }
@@ -744,11 +833,15 @@ function dispatch(kind){
   if(!['infantry','tank','bomber'].every(t=>Number.isSafeInteger(units[t])&&units[t]>=0&&units[t]<=(stack?.[t]||0))||!unitTotal(units))
     return notice('Select valid troop quantities.');
   const rel=relationWith(game.provinces[draftTarget-1].owner);
-  if((kind==='attack')!==['war','neutral'].includes(rel))return notice('Choose Move for friendly territory or Attack for hostile territory.');
-  const data={from:selected,to:draftTarget,units,kind,autoDeclareWar:kind==='attack'&&rel==='neutral'};
-  socket.emit('move',data);
-  if(data.autoDeclareWar)notice(`War declared on ${nationNames[game.provinces[draftTarget-1].owner]}. Attack launched.`);
-  clearDeployment();
+  const actualKind=rel==='neutral'||rel==='war'?'attack':'move';
+  const command={from:selected,to:draftTarget,units,kind:actualKind,autoDeclareWar:rel==='neutral'};
+  if(rel==='neutral'){
+    // Only a neutral target causes a SECOND warning; the server declares war
+    // on dispatch after this explicit confirmation.
+    showAttackConfirmation({event:'move',data:command},`Confirm attack: this will declare war with ${nationNames[game.provinces[draftTarget-1].owner]}.`);
+    return;
+  }
+  socket.emit('move',command);clearDeployment();
 }
 function currentOrderValidity(){
   if(!game||!selected||!actionMode)return {valid:false,message:'Select a starting province.'};
@@ -759,9 +852,8 @@ function currentOrderValidity(){
     return {valid:false,message:'Choose at least one available unit.'};
   if(!draftTarget)return {valid:false,message:'Click a destination province on the map.'};
   const rel=relationWith(game.provinces[draftTarget-1].owner);
-  if(actionMode==='move'&&rel!=='self'&&rel!=='ally')return {valid:false,message:'Move requires owned or allied territory. Use Attack for hostile territory.'};
-  if(actionMode==='attack'&&rel!=='war'&&rel!=='neutral')return {valid:false,message:'Attack requires enemy or neutral territory. Use Move for friendly territory.'};
-  return {valid:true,message:actionMode==='attack'&&rel==='neutral'?'Confirming this attack automatically declares war.':`Ready to ${actionMode}. Confirm to dispatch your army.`};
+  if(actionMode==='attack'&&(rel==='self'||rel==='ally'))return {valid:false,message:'Choose Move for your or allied territory.'};
+  return {valid:true,message:rel==='neutral'?'This neutral attack requires an explicit war declaration confirmation.':`Ready to ${effectiveOrderKind()}. Confirm to dispatch.`};
 }
 function updateArmyReadouts(){
   for(const t of ['infantry','tank','bomber']){
@@ -789,8 +881,8 @@ function updateOrderUI(){
   $('orderHint').textContent=status.message;
   $('orderHint').classList.toggle('order-warning',!status.valid&&confirming);
   $('confirmOrderBtn').disabled=!status.valid;
-  $('confirmOrderBtn').classList.toggle('is-attack',actionMode==='attack');
-  $('confirmOrderBtn').querySelector('span').textContent=actionMode==='attack'?'Confirm attack':'Confirm move';
+  $('confirmOrderBtn').classList.toggle('is-attack',effectiveOrderKind()==='attack');
+  $('confirmOrderBtn').querySelector('span').textContent=effectiveOrderKind()==='attack'?'Confirm attack':'Confirm move';
 }
 function armAction(kind){
   if(!selected||!game||!assigned)return notice('Select your departure province first.');
@@ -827,20 +919,39 @@ function clickWorld(cx,cy){
   if(selected&&game.provinces[selected-1].owner!==assigned){
     const n=game.provinces[selected-1].owner;if($('dipTarget'))$('dipTarget').value=n;
   }
-  if(selected)setPanel('army');else if(activePanel==='army'||activePanel==='buildings')setPanel(null);
+  // Province taps never open a menu automatically. Build remains an explicit action.
+  if(!selected&&(activePanel==='army'||activePanel==='buildings'))setPanel(null);
   updateSidebar();queueRender();
 }
 
-let pointer=null;
+// Touch map controls: single-finger pan/tap, two-finger pinch zoom.
+const activeTouches=new Map();let pointer=null, pinch=null, suppressTap=false;
 canvas.addEventListener('pointerdown',e=>{
   if(e.button!==0&&e.button!==1&&e.button!==2)return;
   canvas.setPointerCapture(e.pointerId);
+  activeTouches.set(e.pointerId,{x:e.clientX,y:e.clientY});
   pointer={id:e.pointerId,x:e.clientX,y:e.clientY,panX:camera.panX,panY:camera.panY,drag:false,button:e.button};
+  if(activeTouches.size===2){
+    const pts=[...activeTouches.values()],dist=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);
+    pinch={dist:Math.max(1,dist),zoom:camera.zoom,panX:camera.panX,panY:camera.panY,
+      centerX:(pts[0].x+pts[1].x)/2,centerY:(pts[0].y+pts[1].y)/2};
+    suppressTap=true;
+  }
 });
 canvas.addEventListener('pointermove',e=>{
+  if(activeTouches.has(e.pointerId))activeTouches.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pinch&&activeTouches.size>=2){
+    const pts=[...activeTouches.values()].slice(0,2),dist=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);
+    camera.zoom=Math.max(.75,Math.min(6,pinch.zoom*dist/pinch.dist));
+    camera.panX=pinch.panX+((pts[0].x+pts[1].x)/2-pinch.centerX);
+    camera.panY=pinch.panY+((pts[0].y+pts[1].y)/2-pinch.centerY);
+    queueRender();return;
+  }
   if(pointer&&pointer.id===e.pointerId){const dx=e.clientX-pointer.x,dy=e.clientY-pointer.y;
-    if(Math.hypot(dx,dy)>6)pointer.drag=true;
-    if(pointer.drag){camera.panX=pointer.panX+dx;camera.panY=pointer.panY+dy;queueRender();}}
+    if(Math.hypot(dx,dy)>8)pointer.drag=true;
+    if(pointer.drag){camera.panX=pointer.panX+dx;camera.panY=pointer.panY+dy;queueRender();}
+  }
+  if(e.pointerType==='touch'){$('hoverTip').hidden=true;return;}
   const p=worldFromClient(e.clientX,e.clientY),id=pixelProvince(p.x,p.y);
   if(id!==hovered){hovered=id;queueRender();}
   const tip=$('hoverTip');if(!id||!game){tip.hidden=true;return;}
@@ -848,9 +959,18 @@ canvas.addEventListener('pointermove',e=>{
   tip.append(elem('b',definition.get(id).name),elem('div',nationNames[state.owner]),elem('span',state.visible?`${unitTotal(state.units)} host troops${Object.entries(state.garrison||{}).map(([nation,units])=>` · ${nationNames[nation]}: ${unitTotal(units)} stationed`).join('')}`:'Unknown garrison'));
   tip.style.left=Math.min(p.screenX+18,camera.cw-220)+'px';tip.style.top=Math.min(p.screenY+17,camera.ch-95)+'px';
 });
-canvas.addEventListener('pointerup',e=>{if(!pointer||pointer.id!==e.pointerId)return;if(!pointer.drag&&pointer.button===0)clickWorld(e.clientX,e.clientY);pointer=null;});
-canvas.addEventListener('pointercancel',()=>pointer=null);
-canvas.addEventListener('pointerleave',()=>{$('hoverTip').hidden=true;hovered=null;queueRender();});
+canvas.addEventListener('pointerup',e=>{
+  const old=pointer;
+  activeTouches.delete(e.pointerId);
+  if(pinch){if(activeTouches.size<2){pinch=null;pointer=null;suppressTap=true;}return;}
+  if(old?.id===e.pointerId){
+    if(!old.drag&&!suppressTap&&old.button===0)clickWorld(e.clientX,e.clientY);
+    pointer=null;
+  }
+  if(!activeTouches.size)suppressTap=false;
+});
+canvas.addEventListener('pointercancel',e=>{activeTouches.delete(e.pointerId);pointer=null;pinch=null;suppressTap=false;});
+canvas.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'){$('hoverTip').hidden=true;hovered=null;queueRender();}});
 canvas.addEventListener('contextmenu',e=>e.preventDefault());
 canvas.addEventListener('wheel',e=>{
   e.preventDefault();const before=worldFromClient(e.clientX,e.clientY);
@@ -860,7 +980,7 @@ canvas.addEventListener('wheel',e=>{
 },{passive:false});
 function zoom(f){camera.zoom=Math.max(.75,Math.min(5,camera.zoom*f));queueRender();}
 $('zoomIn').onclick=()=>zoom(1.25);$('zoomOut').onclick=()=>zoom(.8);
-$('zoomReset').onclick=()=>{camera.zoom=1;camera.panX=0;camera.panY=0;queueRender();};
+$('zoomReset').onclick=()=>{camera.zoom=1;camera.panX=0;camera.panY=0;if(assigned)focusNationOnMobile(assigned);else queueRender();};
 for(const t of ['infantry','tank','bomber'])$('army'+t[0].toUpperCase()+t.slice(1)).addEventListener('input',()=>{
   updateArmyReadouts();
   updateDispatchButtons();
@@ -943,7 +1063,7 @@ socket.on('joined',({code,public:isPublic})=>{
   showNationModal();
   socket.emit('preferences',movementPrefs);updateSidebar();
 });
-socket.on('assigned',({nation})=>{assigned=nation;if(nation)$('nationModal').hidden=true;selected=null;paintKey='';updateSidebar();updateCountryAndOwner();queueRender();});
+socket.on('assigned',({nation})=>{assigned=nation;if(nation)$('nationModal').hidden=true;selected=null;paintKey='';focusNationOnMobile(nation);updateSidebar();updateCountryAndOwner();queueRender();});
 socket.on('state',next=>{
   // When a new chat or diplomacy request arrives, flag its icon without opening a panel.
   const latestId=next.chat?.at(-1)?.id??0;
@@ -987,7 +1107,7 @@ setInterval(()=>{
     const sc=scratch.getContext('2d',{willReadFrequently:true});sc.drawImage(territoryImage,0,0);
     idPixels=sc.getImageData(0,0,map.width,map.height).data;
     sc.clearRect(0,0,map.width,map.height);sc.drawImage(mapImage,0,0);originalPixels=sc.getImageData(0,0,map.width,map.height).data;
-    updateSidebar();if(game){updateLabels();rebuildTint();}resize();new ResizeObserver(resize).observe(canvas.parentElement);
+    updateSidebar();if(game){updateLabels();rebuildTint();}resize();if(assigned)focusNationOnMobile(assigned);new ResizeObserver(resize).observe(canvas.parentElement);
   }catch(e){console.error('Game initialization failed:',e);notice(`Map initialization error: ${e.message||e}`);}
 })();
 

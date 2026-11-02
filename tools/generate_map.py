@@ -39,25 +39,96 @@ colour = {'GB':'#BC9B6B','ES':'#BBA572','FR':'#B9A17C','DE':'#B49C73','SU':'#B49
 playable = ['GB','ES','FR','DE','SU','RO','HU','IT']
 
 # Historical-ish province names aligned by anchor points in image coordinates.
-province_name_anchors = {
-    'GB': [('Highlands', 430, 110), ('Grampian', 505, 145), ('Lowlands', 440, 220), ('Northumbria', 470, 285), ('Lancashire', 380, 305), ('Midlands', 430, 340), ('Wales', 340, 345), ('East Anglia', 515, 335), ('Home Counties', 500, 385), ('Wessex', 390, 385)],
-    'ES': [('Galicia', 120, 680), ('Asturias', 190, 650), ('Old Castile', 270, 700), ('Basque Country', 420, 665), ('Aragon', 470, 725), ('Catalonia', 505, 780), ('Valencia', 455, 835), ('Andalusia', 220, 845), ('Extremadura', 140, 770), ('New Castile', 300, 790)],
-    'FR': [('Brittany', 300, 430), ('Normandy', 420, 405), ('Picardy', 560, 400), ('Ile-de-France', 520, 470), ('Champagne', 640, 470), ('Alsace-Lorraine', 720, 470), ('Aquitaine', 360, 560), ('Loire', 470, 540), ('Burgundy', 600, 540), ('Provence', 690, 640)],
-    'DE': [('Rhineland', 730, 360), ('Westphalia', 790, 320), ('Hanover', 845, 285), ('Brandenburg', 960, 325), ('Pomerania', 930, 255), ('Saxony', 860, 420), ('Thuringia', 795, 420), ('Bavaria', 900, 495), ('Silesia', 1015, 450), ('East Prussia', 1010, 280)],
-    'SU': [('Baltic Frontier', 1070, 220), ('Belarus', 1125, 335), ('Smolensk', 1230, 290), ('Moscow Region', 1335, 285), ('Leningrad', 1210, 120), ('Ukraine West', 1200, 470), ('Kiev Region', 1320, 465), ('Donbas', 1460, 500), ('Crimea', 1490, 610), ('Caucasus Frontier', 1585, 360)],
-    'RO': [('Maramures', 1225, 485), ('Bukovina', 1300, 480), ('Moldavia', 1390, 495), ('Bessarabia', 1450, 515), ('Transylvania North', 1240, 560), ('Transylvania South', 1320, 575), ('Banat', 1185, 605), ('Muntenia', 1350, 625), ('Dobruja', 1450, 610), ('Oltenia', 1245, 640)],
-    'HU': [('Transdanubia West', 1035, 505), ('Transdanubia East', 1085, 505), ('Budapest', 1120, 520), ('Northern Hungary', 1125, 470), ('Great Plain West', 1075, 550), ('Great Plain East', 1165, 545), ('Miskolc', 1150, 490), ('Debrecen', 1190, 525), ('Szeged', 1140, 575), ('Pecs', 1050, 575)],
-    'IT': [('Piedmont', 785, 585), ('Lombardy', 835, 585), ('Venetia', 905, 590), ('Emilia', 875, 640), ('Tuscany', 830, 700), ('Lazio', 885, 735), ('Campania', 945, 760), ('Apulia', 1035, 775), ('Calabria', 1010, 855), ('Sicily-Sardinia', 845, 845)],
-    'CH': [('Western Switzerland', 735, 540), ('Swiss Plateau', 800, 525), ('Eastern Switzerland', 870, 530)],
-    'PT': [('North Portugal', 120, 715), ('Lisbon', 125, 790), ('Alentejo-Algarve', 135, 860)],
-    'IE': [('Ulster', 210, 205), ('Leinster', 235, 270), ('Munster', 170, 320)],
-    'NL': [('Holland', 650, 300), ('Gelderland', 695, 315), ('North Brabant', 655, 355)],
-    'BE': [('Flanders', 620, 370), ('Brabant', 646, 388), ('Wallonia', 628, 414)],
-    'DK': [('Jutland', 800, 170), ('Funen', 820, 228), ('Zealand', 920, 225)],
-    'SK': [('Western Slovakia', 1055, 465), ('Central Slovakia', 1120, 462), ('Eastern Slovakia', 1180, 466)],
-    'YU': [('Croatia-Slavonia', 1100, 625), ('Bosnia', 1210, 670), ('Serbia', 1310, 710)],
-    'BG': [('Western Bulgaria', 1185, 690), ('Thrace', 1245, 700), ('Black Sea Coast', 1260, 640)],
-}
+province_name_anchors = {'GB': [('London', 505, 375),
+        ('Edinburgh', 455, 220),
+        ('Glasgow', 395, 230),
+        ('Manchester', 435, 310),
+        ('Birmingham', 460, 345),
+        ('Liverpool', 390, 315),
+        ('Cardiff', 355, 355),
+        ('Bristol', 415, 375),
+        ('Newcastle', 485, 280),
+        ('Aberdeen', 470, 140)],
+ 'ES': [('Madrid', 320, 770),
+        ('Barcelona', 512, 730),
+        ('Seville', 230, 830),
+        ('Valencia', 450, 807),
+        ('Bilbao', 380, 672),
+        ('Zaragoza', 465, 707),
+        ('Granada', 300, 850),
+        ('Valladolid', 310, 707),
+        ('A Coruña', 150, 678),
+        ('Oviedo', 225, 649)],
+ 'FR': [('Paris', 525, 461),
+        ('Marseille', 690, 647),
+        ('Lyon', 640, 557),
+        ('Bordeaux', 395, 590),
+        ('Lille', 585, 406),
+        ('Nantes', 384, 480),
+        ('Toulouse', 505, 632),
+        ('Strasbourg', 734, 481),
+        ('Brest', 307, 434),
+        ('Dijon', 611, 517)],
+ 'DE': [('Berlin', 956, 330),
+        ('Hamburg', 837, 285),
+        ('Munich', 897, 515),
+        ('Cologne', 737, 373),
+        ('Frankfurt', 802, 415),
+        ('Stuttgart', 807, 475),
+        ('Dresden', 923, 418),
+        ('Breslau', 1034, 433),
+        ('Königsberg', 1020, 272),
+        ('Hanover', 847, 339)],
+ 'SU': [('Moscow', 1328, 290),
+        ('Leningrad', 1230, 124),
+        ('Minsk', 1145, 337),
+        ('Smolensk', 1235, 310),
+        ('Kiev', 1318, 466),
+        ('Odessa', 1435, 553),
+        ('Kharkov', 1452, 469),
+        ('Vitebsk', 1185, 250),
+        ('Gomel', 1275, 370),
+        ('Pskov', 1135, 205)],
+ 'RO': [('Bucharest', 1349, 621),
+        ('Cluj', 1254, 563),
+        ('Iași', 1381, 510),
+        ('Timișoara', 1189, 607),
+        ('Brașov', 1321, 574),
+        ('Sibiu', 1265, 588),
+        ('Craiova', 1261, 639),
+        ('Constanța', 1467, 618),
+        ('Galați', 1401, 576),
+        ('Cernăuți', 1304, 487)],
+ 'HU': [('Budapest', 1112, 528),
+        ('Debrecen', 1192, 522),
+        ('Szeged', 1134, 568),
+        ('Pécs', 1054, 574),
+        ('Miskolc', 1156, 489),
+        ('Győr', 1045, 510),
+        ('Szolnok', 1148, 548),
+        ('Kecskemét', 1095, 554),
+        ('Eger', 1100, 486),
+        ('Nyíregyháza', 1191, 485)],
+ 'IT': [('Rome', 894, 736),
+        ('Milan', 835, 584),
+        ('Turin', 781, 596),
+        ('Venice', 911, 599),
+        ('Florence', 845, 680),
+        ('Naples', 963, 765),
+        ('Bologna', 887, 635),
+        ('Bari', 1044, 778),
+        ('Palermo', 914, 893),
+        ('Genoa', 788, 651)],
+ 'CH': [('Bern', 770, 537), ('Zürich', 820, 518), ('Geneva', 724, 552)],
+ 'PT': [('Lisbon', 130, 785), ('Porto', 125, 707), ('Faro', 130, 861)],
+ 'IE': [('Dublin', 242, 278), ('Cork', 175, 329), ('Galway', 174, 234)],
+ 'NL': [('Amsterdam', 655, 304), ('Rotterdam', 652, 343), ('Utrecht', 704, 324)],
+ 'BE': [('Brussels', 644, 384), ('Antwerp', 625, 365), ('Liège', 664, 403)],
+ 'DK': [('Copenhagen', 919, 224), ('Aarhus', 799, 213), ('Odense', 845, 235)],
+ 'SK': [('Bratislava', 1051, 467), ('Banská Bystrica', 1120, 469), ('Košice', 1180, 465)],
+ 'YU': [('Belgrade', 1295, 695), ('Zagreb', 1068, 617), ('Sarajevo', 1199, 684)],
+ 'BG': [('Sofia', 1182, 689), ('Plovdiv', 1243, 701), ('Varna', 1272, 643)]}
+
 manual_seeds = {
     'CH': [(730, 528), (798, 524), (868, 528)],
     'DK': [(790, 156), (812, 224), (918, 228)],
@@ -151,6 +222,21 @@ for comp in range(1, n + 1):
         fill = vals[np.argmax(counts)]
         country[mask] = fill
 
+# 1. A detached coastal fragment just south of Wales is British, not French.
+# 2. A disconnected island-shaped cloud in the far northeastern sea is not Soviet land.
+fr_labels, fr_count = ndi.label((country == ids['FR']).astype(np.uint8))
+for component in range(1, fr_count + 1):
+    ys, xs = np.where(fr_labels == component)
+    if len(xs) < 40: continue
+    if xs.min() >= 275 and xs.max() <= 360 and ys.min() < 405 and ys.max() < 405:
+        country[ys, xs] = ids['GB']
+su_labels, su_count = ndi.label((country == ids['SU']).astype(np.uint8))
+for component in range(1, su_count + 1):
+    ys, xs = np.where(su_labels == component)
+    if len(xs) < 40: continue
+    if xs.min() >= 1500 and ys.max() < 210 and ys.min() > 60:
+        country[ys, xs] = 0
+
 Image.fromarray((country * 14).clip(0,255).astype(np.uint8)).save(out / 'country-mask-debug.png')
 
 # Province generation.
@@ -243,9 +329,15 @@ for code, anchors in province_name_anchors.items():
     for i, p in enumerate(plist):
         for j, (_, ax, ay) in enumerate(anchors):
             cost[i, j] = (p['x'] - ax) ** 2 + (p['y'] - ay) ** 2
-    rows, cols = linear_sum_assignment(cost)
+    # Ensure each historical capital appears, assigned to the closest province.
+    cap_row = int(np.argmin(cost[:, 0]))
+    plist[cap_row]['name'] = anchors[0][0]
+    plist[cap_row]['capital'] = True
+    other_rows = [i for i in range(len(plist)) if i != cap_row]
+    other_cols = list(range(1, len(anchors)))
+    rows, cols = linear_sum_assignment(cost[np.ix_(other_rows, other_cols)])
     for r_i, c_i in zip(rows, cols):
-        plist[r_i]['name'] = anchors[c_i][0]
+        plist[other_rows[r_i]]['name'] = anchors[other_cols[c_i]][0]
 
 # Helper to connect sea crossings.
 centers = {p['id']: (p['x'], p['y'], p['nation']) for p in provinces}
@@ -302,7 +394,7 @@ mapdata = {
     'startDate': '1939-10-06',
     'secondsPerDay': 10,
     'playableNations': playable,
-    'nations': {c: {'id': c, 'name': name[c], 'color': colour[c], 'playable': c in playable} for c in ids},
+    'nations': {c: {'id': c, 'name': name[c], 'color': colour[c], 'playable': c in playable, 'capital': province_name_anchors[c][0][0]} for c in ids},
     'provinces': provinces,
 }
 (root / 'shared/map.json').write_text(json.dumps(mapdata, separators=(',', ':')))

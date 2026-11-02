@@ -35,7 +35,7 @@ test('army composer exposes three ranges defaulting to all available troops',()=
   assert.match(html,/id="orderPlanner"[^>]*hidden/);
 });
 test('destination selection stages an order instead of dispatching it',()=>{
-  const handler=js.slice(js.indexOf('function clickWorld('),js.indexOf('let pointer=null;'));
+  const handler=js.slice(js.indexOf('function clickWorld('),js.indexOf('// Touch map controls:'));
   assert.match(handler,/draftTarget=id;[\s\S]*?updateSidebar\(\);queueRender\(\);[\s\S]*?return;/);
   assert.doesNotMatch(handler,/dispatch\(/);
   assert.match(js,/\$\('confirmOrderBtn'\)\.onclick=\(\)=>\{[\s\S]*?dispatch\(actionMode\)/);
@@ -44,4 +44,22 @@ test('destination selection stages an order instead of dispatching it',()=>{
 test('map toolbar swaps three original actions for Confirm / Cancel',()=>{
   assert.match(js,/for\(const id of \['quickMove','quickAttack','quickBuild'\]\)\$\(id\)\.hidden=confirming/);
   assert.match(js,/for\(const id of \['confirmOrderBtn','cancelOrderBtn'\]\)\$\(id\)\.hidden=!confirming/);
+});
+
+test('1.12 historical flag icons and three-rank moving marker priority',()=>{
+  assert.match(js,/selectedArmyIcon\(units\).*bomber>0\?'bomber':units\?\.tank>0\?'tank':'infantry'/);
+  assert.match(js,/drawUnitIcon\(x,y,selectedArmyIcon\(order\.units/);
+  assert.match(js,/b\.prepend\(nationFlag\(id\)\)/);
+  assert.match(html,/id="panelIdentity"/);
+});
+test('1.12 neutral attack confirmation and no automatic army panel on map tap',()=>{
+  assert.match(js,/showAttackConfirmation\(\{event:'move',data:command\}/);
+  assert.match(js,/const actualKind=rel==='neutral'\|\|rel==='war'\?'attack':'move'/);
+  const handler=js.slice(js.indexOf('function clickWorld('),js.indexOf('// Touch map controls:'));
+  assert.doesNotMatch(handler,/setPanel\('army'\)/);
+});
+test('1.12 mobile navigation uses docked controls and supports pinch',()=>{
+  assert.match(css,/\.tool-rail\{position:absolute;left:0;right:0;bottom:0;top:auto/);
+  assert.match(js,/const activeTouches=new Map\(\)/);
+  assert.match(js,/camera\.zoom=Math\.max\(\.75,Math\.min\(6,pinch\.zoom\*dist\/pinch\.dist\)\)/);
 });
