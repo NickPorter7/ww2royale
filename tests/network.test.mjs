@@ -17,18 +17,25 @@ const players=[];
 try{
  let okay=false;for(let i=0;i<100;i++){try{const r=await fetch(`http://127.0.0.1:${port}/map.json`);if(r.ok){okay=true;break;}}catch{}await sleep(30);}assert(okay,'server starts');
  for(const asset of ['/','/main.js','/style.css','/map.json','/assets/europe-map.png','/assets/province-ids.png','/assets/province-lines.png','/assets/season-spring.png','/assets/season-summer.png','/assets/season-autumn.png','/assets/season-winter.png'])assert((await fetch(`http://127.0.0.1:${port}${asset}`)).ok,asset);
+ for(const asset of ['/favicon.ico','/favicon-256.png','/apple-touch-icon.png','/assets/branding/logo-640.png','/assets/branding/logo-128.png']){
+   const res=await fetch(`http://127.0.0.1:${port}${asset}`);
+   assert(res.ok,`${asset} should be reachable`);
+   assert.match(res.headers.get('content-type')||'',asset.endsWith('.ico')?/image\/x-icon/:/image\/png/);
+   assert(Number(res.headers.get('content-length'))>1000,`${asset} should contain the logo`);
+ }
+
  const audio=await fetch(`http://127.0.0.1:${port}/assets/audio/music-loop.wav`);
  assert(audio.ok,'royalty-free game soundtrack served');
  assert.match(audio.headers.get('content-type')||'',/audio\/wav/);
  assert(Number(audio.headers.get('content-length'))>50000,'soundtrack must contain playable audio');
- const map=await(await fetch(`http://127.0.0.1:${port}/map.json`)).json();assert.equal(map.provinces.length,107);
+ const map=await(await fetch(`http://127.0.0.1:${port}/map.json`)).json();assert.equal(map.provinces.length,114);
  const a=new P(),b=new P();players.push(a,b);await Promise.all(players.map(p=>p.ready()));
  a.send('createRoom');const x=await a.pop('joined');assert(/^[0-9]{6}$/.test(x.code));
  b.send('joinRoom',x.code);await b.pop('joined');
  a.send('chooseNation','FR');await a.pop('assigned',r=>r.nation==='FR');
  b.send('chooseNation','BE');assert.match(await b.pop('errorMessage'),/valid nation/i,'Belgium is non-playable');
  b.send('chooseRandomNation');const chosen=await b.pop('assigned',r=>r.nation);assert(map.playableNations.includes(chosen.nation));
- a.send('chat','WW2 Royale online');const state=await a.pop('state',s=>s.chat.some(m=>m.text==='WW2 Royale online'));assert.equal(state.provinces.length,107);assert.equal(state.campaignDay,0);
+ a.send('chat','WW2 Royale online');const state=await a.pop('state',s=>s.chat.some(m=>m.text==='WW2 Royale online'));assert.equal(state.provinces.length,114);assert.equal(state.campaignDay,0);
  const frProvince=map.provinces.find(p=>p.nation==='FR').id;
  a.send('buyUnit',{province:frProvince,type:'infantry',amount:1});
  const purchase=await a.pop('purchaseAccepted');assert.equal(purchase.amount,1);
@@ -36,9 +43,10 @@ try{
  const upgrade=await a.pop('buildAccepted');assert.equal(upgrade.level,2);
  await sleep(200);a.send('buyUnit',{province:frProvince,type:'bomber',amount:1});
  assert.match(await a.pop('errorMessage'),/airport/i);
- const q=[];for(let i=0;i<8;i++){const p=new P();players.push(p);await p.ready();p.send('joinRandom');const room=await p.pop('joined');q.push({p,room});if(i)assert.equal(room.code,q[0].room.code);p.send('chooseNation',map.playableNations[i]);await p.pop('assigned',s=>s.nation===map.playableNations[i]);}
- const started=await q[0].p.pop('state',s=>s.started&&s.playerCount===8);assert.equal(started.occupied.length,8);
- const extra=new P();players.push(extra);await extra.ready();extra.send('joinRandom');const newRoom=await extra.pop('joined');assert.notEqual(newRoom.code,q[0].room.code);
+ const q=[];for(let i=0;i<6;i++){const p=new P();players.push(p);await p.ready();p.send('joinRandom');const room=await p.pop('joined');q.push({p,room});if(i)assert.equal(room.code,q[0].room.code);p.send('chooseNation',map.playableNations[i]);await p.pop('assigned',s=>s.nation===map.playableNations[i]);}
+ const started=await q[0].p.pop('state',s=>s.started&&s.playerCount===6);assert.equal(started.occupied.length,6);
+ const extra=new P();players.push(extra);await extra.ready();extra.send('joinRandom');const late=await extra.pop('joined');assert.equal(late.code,q[0].room.code);extra.send('chooseNation',map.playableNations[6]);await extra.pop('assigned',s=>s.nation===map.playableNations[6]);
+ const extra2=new P();players.push(extra2);await extra2.ready();extra2.send('joinRandom');const late2=await extra2.pop('joined');assert.equal(late2.code,q[0].room.code);extra2.send('chooseNation',map.playableNations[7]);await extra2.pop('assigned',s=>s.nation===map.playableNations[7]);
  a.send('leaveRoom');await a.pop('leftRoom');
- console.log('PASS: asset endpoints, private create/join, eight playable nations, rejection of nonplayable, chat, time, eight-player public matchmaking');
+ console.log('PASS: asset endpoints, private create/join, nine playable nations, rejection of nonplayable, chat, time, six-of-nine public matchmaking with late quick-join');
 }finally{players.forEach(p=>p.close());server.kill();}

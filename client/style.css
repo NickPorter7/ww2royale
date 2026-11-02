@@ -498,3 +498,29 @@ button:active:not(:disabled),.quick-command .quick-action:active:not(:disabled),
  .compact-recruit .troop-buy-actions{margin-left:0}
  .compact-balance .balance-text{gap:7px}
 }
+
+
+/* Version 1.19.1 — official WW2 Royale branding, including mobile layouts. */
+.brand-seal.brand-logo{
+  width:48px;height:48px;min-width:48px;border:0;border-radius:0;
+  padding:0;background:transparent;object-fit:contain;display:block;
+  filter:drop-shadow(0 2px 3px rgba(0,0,0,.45));
+}
+.header-corner-logo{
+  display:block;flex:0 0 42px;width:42px;height:42px;object-fit:contain;
+  filter:drop-shadow(0 2px 4px rgba(0,0,0,.48));
+}
+.lobby-brand-logo{
+  display:block;width:min(320px,72vw);height:auto;max-height:275px;
+  object-fit:contain;margin:-20px auto 2px;
+  filter:drop-shadow(0 8px 16px rgba(0,0,0,.46));
+}
+@media (max-width:790px){
+  .header-corner-logo{width:34px;height:34px;flex-basis:34px;}
+  .lobby-brand-logo{width:min(225px,60vw);max-height:205px;margin:-7px auto 0;}
+}
+@media (max-width:520px){
+  .brand-seal.brand-logo{display:none;}
+  .header-corner-logo{width:30px;height:30px;flex-basis:30px;}
+  .lobby-brand-logo{width:min(178px,46vw);max-height:155px;margin:-5px auto 4px;}
+}

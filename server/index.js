@@ -9,7 +9,10 @@ const map=JSON.parse(readFileSync(new URL('../shared/map.json',import.meta.url),
 const clientPath=path.resolve(fileURLToPath(new URL('../client/',import.meta.url)));
 const rooms=new Map(),connections=new Map();
 const MAX_PAYLOAD=16384;
-const MIME={'.html':'text/html; charset=utf-8','.js':'application/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.svg':'image/svg+xml','.wav':'audio/wav'};
+const PUBLIC_MAX_PLAYERS=9;
+const PUBLIC_MIN_PLAYERS=6;
+const PUBLIC_LATE_JOIN_MS=60000;
+const MIME={'.html':'text/html; charset=utf-8','.js':'application/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.svg':'image/svg+xml','.ico':'image/x-icon','.webp':'image/webp','.wav':'audio/wav'};
 const pair=(a,b)=>[a,b].sort().join(':');
 function roomCreate(code,isPublic=false){const g=createGame(map);return {code,g,public:isPublic,started:!isPublic,players:new Map(),lastAction:new Map(),prefs:new Map()};}
 // Generate a genuinely random, unique 6-digit code from currently active rooms.
@@ -31,6 +34,8 @@ function enterRoom(client,room){
 function respond(client,message){send(client.id,'errorMessage',message);}
 function nationOf(room,client){return room.players.get(client.id)||null;}
 function active(room){return [...connections.values()].filter(c=>c.room===room.code);}
+function publicJoinWindowOpen(room,now=Date.now()){return !!(room.public&&room.started&&room.g.campaignStartAt&&now-room.g.campaignStartAt<PUBLIC_LATE_JOIN_MS);}
+function publicSlotsRemaining(room){return Math.max(0,PUBLIC_MAX_PLAYERS-active(room).length);}
 function sendSnapshot(client){
   const room=rooms.get(client.room);if(!room)return;
   const nation=nationOf(room,client);const state=viewFor(room.g,nation,Date.now(),room.prefs.get(client.id));
@@ -44,7 +49,7 @@ function leave(client){
   if(!active(room).length)rooms.delete(prev);else broadcast(room);
 }
 function maybeStartPublic(room){
-  if(room.public&&!room.started&&room.players.size===8&&active(room).length===8){
+  if(room.public&&!room.started&&room.players.size>=PUBLIC_MIN_PLAYERS&&active(room).length>=PUBLIC_MIN_PLAYERS){
     room.started=true;
     const now=Date.now();room.g.lastTick=now;room.g.campaignStartAt=now;
     // Production is purchase-based; no automatic troop timers to reset.
@@ -65,8 +70,13 @@ function guardRoom(client,type,data){
   if(type==='joinRandom'){
     if(client.room)leave(client);
     // Reserve a seat for every connected commander, even before nation selection.
-    let eligible=[...rooms.values()].filter(r=>r.public&&!r.started&&active(r).length<8&&!r.g.winner);
-    eligible.sort((a,b)=>active(b).length-active(a).length);
+    const now=Date.now();
+    let eligible=[...rooms.values()].filter(r=>r.public&&!r.g.winner&&publicSlotsRemaining(r)>0&&(!r.started||publicJoinWindowOpen(r,now)));
+    eligible.sort((a,b)=>{
+      const as=(a.started?1000:0)+active(a).length;
+      const bs=(b.started?1000:0)+active(b).length;
+      return bs-as;
+    });
     let room=eligible[0];if(!room){const code=allocateRoomCode();room=roomCreate(code,true);rooms.set(code,room);}
     client.room=room.code;
     send(client.id,'joined',{code:room.code,created:false,public:true});
@@ -89,7 +99,13 @@ function guardRoom(client,type,data){
     }
     const room=rooms.get(data);
     if(!room){send(client.id,'joinError','No active server uses that code. Ask the host to create a room first.');return;}
-    if(room.public){send(client.id,'joinError','Public matches can only be joined with Quick Match.');return;}
+    if(room.public){
+      if(room.g.winner){send(client.id,'joinError','That public server has already finished.');return;}
+      if(publicSlotsRemaining(room)<=0){send(client.id,'joinError','That public server is full.');return;}
+      if(client.room!==data){leave(client);}
+      enterRoom(client,room);
+      return;
+    }
     if(client.room!==data){leave(client);}
     enterRoom(client,room);
     return;
@@ -97,7 +113,6 @@ function guardRoom(client,type,data){
   const room=client.room?rooms.get(client.room):null;if(!room)return;
   if(type==='chooseNation'||type==='chooseRandomNation'){
     try{
-      if(room.public&&room.started&&!nationOf(room,client))throw Error('Match has already started.');
       const available=Object.keys(map.nations).filter(n=>map.nations[n].playable&&![...room.players.values()].includes(n));
       const current=nationOf(room,client);
       const desired=type==='chooseRandomNation'?(current||available[randomInt(available.length)]):data;
@@ -111,7 +126,7 @@ function guardRoom(client,type,data){
     room.prefs.set(client.id,prefs);sendSnapshot(client);return;
   }
   const nation=nationOf(room,client);if(!nation)return respond(client,'Select a nation first.');
-  if(room.public&&!room.started)return respond(client,`Waiting for ${8-room.players.size} more commanders.`);
+  if(room.public&&!room.started)return respond(client,`Waiting for ${Math.max(0,PUBLIC_MIN_PLAYERS-room.players.size)} more commanders.`);
   const now=Date.now();
   if(type==='restart'){
     if(!room.g.winner)return respond(client,'Campaign is still running.');

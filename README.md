@@ -1,4 +1,34 @@
-# WW2 Royale — Version 1.16
+## Version 1.19.1 — Official logo integration
+
+- Added the supplied transparent WW2 Royale emblem to the **home screen**, replacing the placeholder star with a prominent full-size logo.
+- Replaced the old four-point star by the game title with a smaller branded logo and added a matching **logo in the top-right corner** of the game bar.
+- Added an `.ico` favicon, a high-resolution PNG favicon, and an Apple touch icon for browsers and phones.
+- The art is included locally at `client/assets/branding/`. There are no new third-party dependencies or external image requests.
+- All prior version 1.19 gameplay, province maps, Portugal, public matchmaking and music are retained.
+
+Browser favicons may be cached; after deploying refresh the page and, if needed, try a new private tab to see the new icon.
+
+## Version 1.19 — Portugal playable, polished province borders, and 6-of-9 public matchmaking
+
+- Portugal is now a **playable nation** with **10 provinces** instead of 3.
+- Public matchmaking now supports **9 playable nations total**, and public games **start once 6 commanders** have selected nations.
+- **Quick Match** can still place players into a started public server for the **first 60 seconds** after the war begins, as long as a nation slot is still open.
+- After that first minute, the match can still be joined by **entering the room code** directly.
+- Province borders received another polish pass for a more historical-map look while keeping the same territory colours.
+
+## Version 1.18 — sandbox wording, cleaner order planning, and revised province lines
+
+- Replaced the visible top-bar subtitle **THE EUROPEAN THEATRE** with **WW2 SANDBOX**.
+- When you enter **Move** or **Attack** planning, the bottom province intelligence strip now hides while the troop sliders are on screen, so the planner no longer has province info sitting behind it.
+- Province borders were redrawn in a more map-like style inspired by the supplied screenshot: the overlay is now generated from the province-ID raster with fine pale border lines and a subtle dark under-shadow, keeping province edges fully connected while looking more like hand-drawn historical map partitions.
+
+## Version 1.17.1 — Uploaded soundtrack integrated
+
+The user-provided **War Impact** MP3 by The_Mountain is now bundled as `client/assets/audio/war-impact.mp3`, approximately 3 minutes 13 seconds long. The game uses it as its default looping soundtrack at 22% volume and retains the original loop as a fallback if the MP3 cannot play. Other sound effects are unchanged. The previously implemented treasury display refreshes every five seconds; server-side cash accrual is unchanged.
+
+Music page: https://pixabay.com/music/main-title-war-impact-129181/ . This file was provided for inclusion in the game. Keep the Pixabay license/download records when deploying publicly; Pixabay's license terms and any Content ID claims remain the deployer's responsibility.
+
+# WW2 Royale — Version 1.19
 
 Real-time multiplayer WWII-inspired browser strategy game for desktop and mobile. This release updates connected province borders, movement and calendar timings, progressive seasonal weather, province troop counters, the province intelligence dock, button states, and the original soundtrack.
 

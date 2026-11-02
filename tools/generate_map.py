@@ -36,7 +36,7 @@ regions = {
 ids = {'GB':1,'ES':2,'FR':3,'DE':4,'SU':5,'RO':6,'HU':7,'IT':8,'CH':9,'PT':10,'IE':11,'NL':12,'BE':13,'DK':14,'SK':15,'YU':16,'BG':17}
 name = {'GB':'Great Britain','ES':'Spain','FR':'France','DE':'Nazi Germany','SU':'Soviet Union','RO':'Romania','HU':'Hungary','IT':'Fascist Italy','CH':'Switzerland','PT':'Portugal','IE':'Ireland','NL':'Netherlands','BE':'Belgium','DK':'Denmark','SK':'Slovakia','YU':'Yugoslavia','BG':'Bulgaria'}
 colour = {'GB':'#BC9B6B','ES':'#BBA572','FR':'#B9A17C','DE':'#B49C73','SU':'#B49B70','RO':'#AB946D','HU':'#BEAB81','IT':'#C1A781','CH':'#C1AE8C','PT':'#BD9C75','IE':'#C4A478','NL':'#BCA783','BE':'#AD9774','DK':'#C9B38F','SK':'#C2A881','YU':'#BCA17D','BG':'#B59C77'}
-playable = ['GB','ES','FR','DE','SU','RO','HU','IT']
+playable = ['GB','ES','FR','DE','SU','RO','HU','IT','PT']
 
 # Historical-ish province names aligned by anchor points in image coordinates.
 province_name_anchors = {'GB': [('London', 505, 375),
@@ -120,7 +120,16 @@ province_name_anchors = {'GB': [('London', 505, 375),
         ('Palermo', 914, 893),
         ('Genoa', 788, 651)],
  'CH': [('Bern', 770, 537), ('Zürich', 820, 518), ('Geneva', 724, 552)],
- 'PT': [('Lisbon', 130, 785), ('Porto', 125, 707), ('Faro', 130, 861)],
+ 'PT': [('Lisbon', 115, 790),
+        ('Porto', 118, 700),
+        ('Coimbra', 126, 748),
+        ('Braga', 114, 676),
+        ('Faro', 135, 858),
+        ('Évora', 150, 805),
+        ('Leiria', 142, 728),
+        ('Guarda', 164, 732),
+        ('Viseu', 152, 700),
+        ('Castelo Branco', 172, 775)],
  'IE': [('Dublin', 242, 278), ('Cork', 175, 329), ('Galway', 174, 234)],
  'NL': [('Amsterdam', 655, 304), ('Rotterdam', 652, 343), ('Utrecht', 704, 324)],
  'BE': [('Brussels', 644, 384), ('Antwerp', 625, 365), ('Liège', 664, 403)],
@@ -134,7 +143,7 @@ manual_seeds = {
     'DK': [(790, 156), (812, 224), (918, 228)],
     'BE': [(616, 366), (647, 383), (630, 407)],
     'NL': [(650, 292), (690, 312), (657, 347)],
-    'PT': [(112, 706), (125, 788), (132, 860)],
+    'PT': [(105, 676), (119, 698), (151, 700), (139, 728), (168, 734), (126, 750), (170, 776), (118, 792), (145, 812), (133, 858)],
     'IE': [(210, 208), (235, 272), (165, 324)],
     'SK': [(1058, 466), (1120, 462), (1180, 466)],
     'YU': [(1105, 624), (1210, 670), (1305, 710)],
@@ -379,12 +388,21 @@ rgba[:, :, 3] = (province > 0) * 255
 Image.fromarray(rgba, 'RGBA').save(out / 'province-ids.png')
 
 edge = np.zeros((h, w), np.uint8)
-edge[:-1, :] |= ((province[:-1, :] != province[1:, :]) & (province[:-1, :] > 0) & (province[1:, :] > 0)).astype(np.uint8) * 170
-edge[:, :-1] |= ((province[:, :-1] != province[:, 1:]) & (province[:, :-1] > 0) & (province[:, 1:] > 0)).astype(np.uint8) * 170
-edge = cv2.dilate(edge, np.ones((2, 2), np.uint8))
+edge[:-1, :] |= ((province[:-1, :] != province[1:, :]) & (province[:-1, :] > 0) & (province[1:, :] > 0)).astype(np.uint8) * 255
+edge[:, :-1] |= ((province[:, :-1] != province[:, 1:]) & (province[:, :-1] > 0) & (province[:, 1:] > 0)).astype(np.uint8) * 255
+edge_main = cv2.GaussianBlur(edge, (0, 0), 0.55)
+edge_shadow = cv2.GaussianBlur(cv2.dilate(edge, np.ones((3, 3), np.uint8)), (0, 0), 1.05)
 outline = np.zeros((h, w, 4), np.uint8)
-outline[:, :, :3] = [12, 12, 11]
-outline[:, :, 3] = np.clip(edge * 0.52, 0, 255).astype(np.uint8)
+shadow_mask = edge_shadow > 8
+main_mask = edge_main > 18
+outline[shadow_mask, 0] = 25
+outline[shadow_mask, 1] = 22
+outline[shadow_mask, 2] = 18
+outline[shadow_mask, 3] = np.clip(edge_shadow[shadow_mask] * 0.42, 0, 120).astype(np.uint8)
+outline[main_mask, 0] = 232
+outline[main_mask, 1] = 220
+outline[main_mask, 2] = 194
+outline[main_mask, 3] = np.maximum(outline[main_mask, 3], np.clip(edge_main[main_mask] * 0.72, 0, 205).astype(np.uint8))
 Image.fromarray(outline, 'RGBA').save(out / 'province-lines.png')
 Image.fromarray(img).save(out / 'europe-map.png', optimize=True)
 

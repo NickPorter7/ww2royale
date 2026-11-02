@@ -23,7 +23,7 @@ const image = (src) => new Promise((resolve,reject)=>{
 });
 
 const AUDIO_FILES = {
-  music:'/assets/audio/music-loop.wav',
+  music:'/assets/audio/war-impact.mp3',
   click:'/assets/audio/click.wav',
   build:'/assets/audio/build.wav',
   message:'/assets/audio/message.wav',
@@ -39,6 +39,12 @@ function unlockAudio(){
   if(!soundState.music){
     const music = new Audio(AUDIO_FILES.music);
     music.loop = true; music.volume = 0.22; music.preload = 'auto';
+    // The chosen Pixabay MP3 is user-supplied. Preserve existing audio as fallback.
+    music.addEventListener('error',()=>{
+      if(music.dataset.fallback==='true')return;
+      music.dataset.fallback='true'; music.src='/assets/audio/music-loop.wav';
+      if(soundState.enabled)music.play().catch(()=>{});
+    });
     soundState.music = music;
   }
   soundState.music.play().catch(()=>{});
@@ -72,6 +78,17 @@ let unitArt = {};
 let soundState = {ready:false,music:null,enabled:true,lastButtonAt:0};
 let definition = new Map(), nationColor = {}, nationNames = {};
 let game = null, assigned = null, selected = null, hovered = null, room = null;
+// Treasury is authoritative on every server tick, but numbers on screen update only every 5 seconds.
+const TREASURY_DISPLAY_INTERVAL_MS=5000;
+let treasuryDisplay={value:null,at:0,nation:null};
+function displayedTreasury(){
+  if(!assigned||!game){treasuryDisplay={value:null,at:0,nation:null};return null;}
+  const now=performance.now();
+  if(treasuryDisplay.nation!==assigned||treasuryDisplay.value===null||now-treasuryDisplay.at>=TREASURY_DISPLAY_INTERVAL_MS){
+    treasuryDisplay={value:Number(game.money)||0,at:now,nation:assigned};
+  }
+  return treasuryDisplay.value;
+}
 let deployingBalloonId=null, currentSeason="autumn", seasonAssets={}, currentSeasonImage=null;
 let seasonIntensity=0.35, weatherIntensity=0.35;
 let labels = true, pendingOrder=null, draftTarget=null, redirectOrderId=null, redirectTarget=null, isPublicMatch=false;
@@ -333,6 +350,37 @@ function drawOutline(id,colour,line){
   const p=definition.get(id);if(!p)return;
   ctx.save();ctx.strokeStyle=colour;ctx.lineWidth=line/camera.scale;ctx.lineJoin='round';
   ctx.stroke(pathFor(p));ctx.restore();
+}
+function buildProvinceBorderCanvas(){
+  if(!map||!idPixels)return null;
+  const w=map.width,h=map.height;
+  const canvas=document.createElement('canvas');
+  canvas.width=w; canvas.height=h;
+  const c=canvas.getContext('2d');
+  const img=c.createImageData(w,h);
+  const edge=new Uint8Array(w*h);
+  const expand=new Uint8Array(w*h);
+  const getId=(x,y)=>{const i=(y*w+x)*4; return idPixels[i+3]? idPixels[i] : 0;};
+  for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){
+    const id=getId(x,y); if(!id) continue;
+    const left=getId(x-1,y), right=getId(x+1,y), up=getId(x,y-1), down=getId(x,y+1);
+    if((left&&left!==id)||(right&&right!==id)||(up&&up!==id)||(down&&down!==id)) edge[y*w+x]=1;
+  }
+  for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){
+    const i=y*w+x; if(!edge[i]) continue;
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++) expand[i+dy*w+dx]=1;
+  }
+  for(let i=0;i<w*h;i++){
+    const k=i*4;
+    if(expand[i]){
+      img.data[k]=22; img.data[k+1]=29; img.data[k+2]=31; img.data[k+3]=130;
+    }
+    if(edge[i]){
+      img.data[k]=244; img.data[k+1]=240; img.data[k+2]=224; img.data[k+3]=215;
+    }
+  }
+  c.putImageData(img,0,0);
+  return canvas;
 }
 /* Country names are rebuilt from CURRENT ownership on every state update.
    Group connected owned provinces, calculate each landmass's real bounds,
@@ -639,7 +687,7 @@ function draw(){
     ctx.drawImage(currentSeasonImage,0,0);
     ctx.restore();
   }
-  if(borderImage)ctx.drawImage(borderImage,0,0); if(territoryBorderCanvas)ctx.drawImage(territoryBorderCanvas,0,0);drawLabels();drawMovements();drawDraftRoute();
+  if(provinceBorderCanvas)ctx.drawImage(provinceBorderCanvas,0,0); else if(borderImage)ctx.drawImage(borderImage,0,0); if(territoryBorderCanvas)ctx.drawImage(territoryBorderCanvas,0,0);drawLabels();drawMovements();drawDraftRoute();
   drawOutline(hovered,'rgba(251,236,157,.8)',2.7);drawOutline(draftTarget?null:selected,'#ffdc87',4);drawOutline(redirectTarget,'#ffbc76',3);
   drawSpyBalloons();drawTroops();ctx.restore();if(game?.movements?.length)queueRender();
 }
@@ -691,7 +739,9 @@ function renderProvinceStats(state,visible){
 }
 let lastIntelRenderKey="";
 function renderProvinceIntel(){
-  const bar=$('provinceInfoBar');bar.hidden=!(selected&&game);if(bar.hidden)return;
+  const bar=$('provinceInfoBar');
+  if(actionMode){ bar.hidden=true; return; }
+  bar.hidden=!(selected&&game); if(bar.hidden) return;
   const state=game.provinces?.[selected-1],province=definition.get(selected);
   if(!state||!province){bar.hidden=true;lastIntelRenderKey='';return;}
   // Preserve horizontal scroll position in the compact mobile intelligence dock.
@@ -770,7 +820,7 @@ function renderBuildButtons(state){
   const summary=elem('div','','construction-balance compact-balance');
   const balanceLeft=elem('div','','construction-balance-left');
   const purse=elem('span','','balance-purse');purse.append(iconSvg('ico-coins'));
-  const balanceText=elem('div','','balance-text');balanceText.append(elem('span','TREASURY'),elem('strong',cash(balance)));
+  const balanceText=elem('div','','balance-text');balanceText.append(elem('span','TREASURY'),elem('strong',cash(displayedTreasury())));
   balanceLeft.append(purse,balanceText);summary.append(balanceLeft);
   out.append(summary);
   const list=elem('div','','build-catalogue compact-build-catalogue');
@@ -830,7 +880,7 @@ function updateBuildCatalogue(state){
   const spyKey=(game?.spyBalloons||[]).filter(b=>b.nation===assigned).map(b=>b.id+':'+b.province).join(',');
   const key=[selected,assigned,...levels,...affordability,spyKey].join('|');
   if(key!==lastBuildRenderKey){lastBuildRenderKey=key;renderBuildButtons(state);}
-  else {const money=$('buildOptions')?.querySelector('.balance-text strong');if(money)money.textContent=cash(balance);}
+  else {const money=$('buildOptions')?.querySelector('.balance-text strong');if(money)money.textContent=cash(displayedTreasury());}
 }
 function setArmyPreset(full){
   if(!selected||!game||!assigned)return;
@@ -851,7 +901,7 @@ function updateSidebar(){
   $('changeNation').disabled=!!assigned;
   $('myFlag').replaceChildren(assigned?nationFlag(assigned):document.createTextNode('—'));
   const badge=$('panelIdentity');if(badge){badge.hidden=!assigned;if(assigned)showNationIdentity(badge,assigned);}
-  $('moneyValue').textContent=assigned?cash(game?.money):'—';
+  $('moneyValue').textContent=assigned?cash(displayedTreasury()):'—';
   const rank=game?.rankings?.find(x=>x.nation===assigned);
   $('placementValue').textContent=rank?`#${rank.place} / ${Object.keys(map.nations).length}`:'—';
   const terr=game?.provinces?.filter(t=>t.owner===assigned)||[];
@@ -1297,7 +1347,7 @@ socket.on('state',next=>{
   game=next;
   if(!$('nationModal').hidden)renderNationChoices();
   $('publicWaiting').hidden=!(next.public&&!next.started);
-  if(next.public&&!next.started){$('waitingCount').textContent=`${next.playerCount} of 8 commanders connected. Match begins once all eight commanders select nations.`; $('waitingBar').style.width=(next.playerCount/8*100)+'%';$('waitingNation').textContent=assigned?`You will command ${nationNames[assigned]}.`:'Choose your nation to enter the war.';}
+  if(next.public&&!next.started){$('waitingCount').textContent=`${next.playerCount} of 9 commanders connected. Match begins once 6 commanders select nations.`; $('waitingBar').style.width=(Math.min(next.playerCount,6)/6*100)+'%';$('waitingNation').textContent=assigned?`You will command ${nationNames[assigned]}.`:'Choose your nation to enter the war.';}
   const now=Date.now();if(now-lastSidebarAt>500){lastSidebarAt=now;updateSidebar();}updateCountryAndOwner();queueRender();
   $('victoryModal').hidden=!next.winner;
   if(next.winner)$('winnerName').textContent=next.winner.nations.map(n=>nationNames[n]).join(' + ')+' VICTORIOUS';
@@ -1311,11 +1361,16 @@ socket.on('buildAccepted',data=>{playSound('build',{volume:0.52});notice(`${data
 socket.on('purchaseAccepted',data=>{playSound(data.type==='tank'?'tank':data.type==='bomber'?'plane':data.type==='balloon'?'plane':'infantry',{volume:0.56});notice(`Purchased ${data.amount} ${data.type}${data.amount>1?'s':''} for ${cash(data.total)}.`,'success');});
 socket.on('joinError',msg=>{showJoinError(String(msg));$('joinModal').hidden=false;});
 socket.on('orderAccepted',o=>{playSound(orderSound(o.units||{[o.type]:o.count},o.kind),{volume:0.48});notice(`Army dispatched · ETA ${fmtSeconds((o.arrivalAt-Date.now())/1000)}`);});
-socket.on('leftRoom',()=>{room=null;assigned=null;game=null;paintKey='';isPublicMatch=false;selected=null;draftTarget=null;actionMode=null;redirectOrderId=null;redirectTarget=null;deployingBalloonId=null;$('publicWaiting').hidden=true;$('joinModal').hidden=false;updateSidebar();queueRender();});
+socket.on('leftRoom',()=>{treasuryDisplay={value:null,at:0,nation:null};room=null;assigned=null;game=null;paintKey='';isPublicMatch=false;selected=null;draftTarget=null;actionMode=null;redirectOrderId=null;redirectTarget=null;deployingBalloonId=null;$('publicWaiting').hidden=true;$('joinModal').hidden=false;updateSidebar();queueRender();});
 setInterval(()=>{
   for(const el of document.querySelectorAll('.order-remaining'))el.textContent=fmtSeconds((Number(el.dataset.arrival)-gameNow())/1000);
   // polling UI for money and timers: state updates from server every 100 ms or from game timer
   syncElapsed();
+  if(assigned&&game&&performance.now()-treasuryDisplay.at>=TREASURY_DISPLAY_INTERVAL_MS){
+    displayedTreasury();$('moneyValue').textContent=cash(treasuryDisplay.value);
+    const panelMoney=$('buildOptions')?.querySelector('.balance-text strong');
+    if(panelMoney)panelMoney.textContent=cash(treasuryDisplay.value);
+  }
 },250);
 (async function init(){
   try{

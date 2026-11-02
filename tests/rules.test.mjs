@@ -7,12 +7,12 @@ const codes=map.playableNations;
 const make=(now=100000)=>createGame(map,now,{random:()=>.5});
 const border=(a,b)=>map.provinces.find(p=>p.nation===a&&p.neighbors.some(n=>map.provinces[n-1].nation===b));
 const dst=(p,n)=>map.provinces[p.neighbors.find(id=>map.provinces[id-1].nation===n)-1];
-test('seventeen factions, exactly eight playable nations',()=>{
+test('seventeen factions, exactly nine playable nations',()=>{
   assert.equal(Object.keys(map.nations).length,17);
-  assert.equal(codes.length,8);
-  assert.deepEqual(new Set(codes),new Set(['GB','ES','FR','DE','SU','RO','HU','IT']));
+  assert.equal(codes.length,9);
+  assert.deepEqual(new Set(codes),new Set(['GB','ES','FR','DE','SU','RO','HU','IT','PT']));
   for(const c of Object.keys(map.nations))assert.equal(map.provinces.filter(p=>p.nation===c).length,codes.includes(c)?10:3);
-  assert.equal(map.provinces.length,107);
+  assert.equal(map.provinces.length,114);
 });
 test('all provinces contiguous to something and IDs sequential',()=>{
   for(let i=0;i<map.provinces.length;i++){
@@ -118,7 +118,7 @@ test('all military travel speeds are 1.5x with tanks slowest',()=>{
   assert.equal(o.arrivalAt-o.startedAt,expected,`${type} hop timing`);
  }
 });
-test('107 provinces and victory thresholds remain functional',()=>{
+test('114 provinces and victory thresholds remain functional',()=>{
  const g=make();assert.equal(g.winner,null);
  for(let i=0;i<Math.ceil(map.provinces.length*.51);i++)g.provinces[i].owner='FR';
  assert.equal(checkVictory(g)?.nations[0],'FR');

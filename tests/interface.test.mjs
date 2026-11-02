@@ -107,3 +107,14 @@ test('1.16 construction rows have Build, Upgrade and Max states, with compact re
  assert.match(css,/\.building-row-buy\{/);
  assert.match(css,/\.compact-recruit\{/);
 });
+
+
+test('1.19.1 home-screen, corner branding, and favicon metadata use supplied emblem',()=>{
+  assert.match(html,/class="lobby-brand-logo"[^>]*src="\/assets\/branding\/logo-640\.png"/);
+  assert.match(html,/class="brand-seal brand-logo"[^>]*src="\/assets\/branding\/logo-128\.png"/);
+  assert.match(html,/class="header-corner-logo"[^>]*src="\/assets\/branding\/logo-128\.png"/);
+  assert.match(html,/rel="icon" type="image\/x-icon" href="\/favicon\.ico\?v=1191"/);
+  assert.match(html,/rel="apple-touch-icon" href="\/apple-touch-icon\.png\?v=1191"/);
+  assert.match(css,/\.lobby-brand-logo\s*\{/);
+  assert.match(css,/\.header-corner-logo\s*\{/);
+});
