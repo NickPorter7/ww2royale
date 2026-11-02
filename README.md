@@ -1,3 +1,7 @@
+## Version 1.19.5 — province border colour restoration
+
+Province borders use the previous dark charcoal line colour (#0D1314) again. The current border shapes, province layout, troop rendering, and other game mechanics are unchanged.
+
 # WW2 Royale — Version 1.19.3 (Nation Selection Hotfix)
 
 Corrects the country selection bug where playable nations were labelled `undefined` when the menu appeared before the country-name cache was populated. The picker now uses the authoritative nation names in `shared/map.json`, includes those names in its render cache key, and initializes nation names before loading optional seasonal artwork. All nine playable nations have proper labels, including Portugal.
