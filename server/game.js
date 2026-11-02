@@ -6,7 +6,7 @@ export const UNIT_COST={infantry:15,tank:75,bomber:150,balloon:200};
 export const SPY_RADIUS=2; // number of province borders visible around a stationed balloon
 
 export const START_MONEY=100, HOP_MS=5000, MAX_UNITS=100000;
-export const MOVE_MS={infantry:10000,tank:20000,bomber:7000};
+export const MOVE_MS={infantry:15000,tank:30000,bomber:10500};
 const unitKeys=Object.keys(UNIT),buildingKeys=Object.keys(BUILD);
 const pair=(a,b)=>[a,b].sort().join(':');
 const roundMoney=n=>Math.round(n*100)/100;
@@ -446,6 +446,26 @@ function canSeeEnemy(g,nation,p,now=Date.now(),spyVision=null){
   if(spyVision?.has(p.id))return true;
   return g.movements.some(o=>o.type==='bomber'&&o.nation===nation&&o.to===p.id&&o.attacking&&o.arrivalAt-now<=10000);
 }
+/**
+ * Calendar time is anchored to the game's start date. Every anniversary of
+ * October 6 arrives exactly 20 real minutes after the last anniversary.
+ * Intervening day lengths are determined by the actual Gregorian year span,
+ * correctly accounting for February 29 without long-term calendar drift.
+ */
+export function campaignDayAt(g, now=Date.now()){
+  const elapsedMs=Math.max(0,now-g.campaignStartAt);
+  const yearSeconds=Number(g.map.secondsPerYear);
+  if(!(yearSeconds>0)) return Math.floor(elapsedMs/(1000*(g.map.secondsPerDay||10)));
+  const yearMs=yearSeconds*1000;
+  const years=Math.floor(elapsedMs/yearMs);
+  const origin=Date.parse((g.map.startDate||'1939-10-06')+'T00:00:00Z');
+  const initial=new Date(origin);
+  const anniversary=(n)=>Date.UTC(initial.getUTCFullYear()+n,initial.getUTCMonth(),initial.getUTCDate());
+  const start=anniversary(years),end=anniversary(years+1);
+  const days=(end-start)/86400000;
+  const fraction=(elapsedMs-years*yearMs)/yearMs;
+  return Math.round((start-origin)/86400000)+Math.min(days-1,Math.floor(fraction*days));
+}
 export function viewFor(g,nation,now=Date.now(),options={allyMoves:true,hostileMoves:true}){
   const spyVision=new Set();
   if(nation)for(const b of g.spyBalloons)if(b.nation===nation||relation(g,nation,b.nation)==='ally')
@@ -464,7 +484,7 @@ export function viewFor(g,nation,now=Date.now(),options={allyMoves:true,hostileM
   }).map(o=>({...o}));
   return {provinces,occupied:[],money:nation?g.money[nation]:null,rankings:rankings(g),
     spyBalloons:g.spyBalloons.filter(b=>nation&&(b.nation===nation||relation(g,nation,b.nation)==='ally')).map(b=>({...b})),
-    campaignDay:Math.max(0,Math.floor((now-g.campaignStartAt)/(g.map.secondsPerDay||10)/1000)),elapsedSeconds:Math.max(0,Math.floor((now-g.campaignStartAt)/1000)),
+    campaignDay:campaignDayAt(g,now),elapsedSeconds:Math.max(0,Math.floor((now-g.campaignStartAt)/1000)),
     winner:g.winner,diplomacy:g.diplomacy,requests:g.requests,peaceRequests:g.peaceRequests,
     movements,log:g.log,chat:g.chat.filter(m=>m.to==='all'||m.nation===nation||m.to===nation),hopMs:g.hopMs,serverTime:now};
 }

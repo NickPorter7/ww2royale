@@ -1,75 +1,83 @@
-# WW2 Royale — Version 1.14
+# WW2 Royale — Version 1.16
 
-Real-time multiplayer WWII-inspired browser strategy game with a 107-province Europe map, eight playable countries, nine additional non-playable countries, a 1939 campaign clock, diplomacy, purchases, reconnaissance balloons and seasonal visuals.
+Real-time multiplayer WWII-inspired browser strategy game for desktop and mobile. This release updates connected province borders, movement and calendar timings, progressive seasonal weather, province troop counters, the province intelligence dock, button states, and the original soundtrack.
 
-## Launch on Windows
+## Start on Windows
 
-1. Extract `WW2-Royale-1.14.zip` using **Extract All**.
-2. Open the **inner** `ww2-royale-1.14` folder until you can see `package.json`.
-3. In that folder, click the File Explorer address bar, type `cmd`, and press Enter.
-4. Run `npm run dev` (requires Node.js **22 or newer**). No `npm install` is necessary: the game has no third-party production dependencies.
-5. Visit `http://localhost:3000`.
+1. Extract `WW2-Royale-1.16.zip` using **Extract All**.
+2. Open the extracted folder until you see `package.json` at its top level. This ZIP deliberately contains `package.json` at its root to avoid the earlier nested-folder npm error.
+3. In that folder, click File Explorer's address bar, type `cmd`, and press Enter.
+4. Run `npm run dev` (requires **Node.js 22 or newer**; there are no npm production dependencies).
+5. Visit <http://localhost:3000>.
 
-If npm says `ENOENT` for `package.json`, you are in the wrong folder. The folder shown in your terminal must contain `package.json`.
+If `npm run dev` returns `ENOENT` for `package.json`, the terminal is in the wrong directory. Open the directory containing that file, or run the included `start-game-windows.bat` launcher.
 
-To run in production, use `npm start`. The server automatically reads Render's `PORT` environment variable and listens on `0.0.0.0`.
+For online hosting, use `npm start`, on a Render Node.js Web Service with the Root Directory containing `package.json`.
 
-## 1.14: publish polish and presentation update
+## Historical changes retained from 1.15
 
-### Visual map improvements
+### Connected, detailed province borders
 
-- Province borders are now drawn from **smoothed display paths** instead of the old angular linework, making the map look less blocky and more professional.
-- The Iberian border presentation was softened with extra smoothing so **Spain and Portugal** read more naturally on the live map.
-- The province ID mask was cleaned at blue coastal fringes to reduce cases where national colour spilled into the sea, including the problem area around the **Soviet Donbas / Black Sea coast**.
-- The old bottom-left instructional sentence has been removed.
+- **No Chaikin or individually rounded borders.** The black border overlay is regenerated from the exact same province-ID raster that handles clicking and country colours.
+- Neighbouring provinces therefore share the same edges. The edges have more naturally detailed corners, without the rounded gaps seen in 1.14.
+- Hover/selection outlines are regenerated from the province-ID mask at subpixel contour precision.
+- To regenerate the border overlay and province paths after editing a province mask, run `python tools/refine_borders.py` (requires Python, Pillow, NumPy, and OpenCV).
 
-### Music and sound
+### Military and calendar pacing
 
-- Added an original local **copyright-free background music loop** stored in `client/assets/audio/music-loop.wav`.
-- Added local sound effects for:
-  - menu/button clicks
-  - building construction
-  - chat/message sending and arrival
-  - buying infantry
-  - buying tanks
-  - plane movement / air actions
-  - ground movement
-  - attack confirmation / dispatch
-- All audio is bundled locally; there are no external streaming dependencies.
+| Unit | Travel time per province |
+|---|---:|
+| Infantry | 15 seconds |
+| Tanks | 30 seconds |
+| Bombers | 10.5 seconds |
 
-### More professional moving-unit icons
+Mixed armies move at the pace of the slowest unit. Recalls and target changes continue to use standard movement speed. One in-game year now lasts **20 real minutes**, starting on October 6, 1939. The number of days per anniversary interval is taken from the Gregorian calendar, including leap days; each in-game day is about **3.28 real seconds**.
 
-- Moving armies now use dedicated transparent-background art in `client/assets/units/`.
-- The priority remains:
-  1. infantry icon for lowest tier
-  2. tank icon for mid tier
-  3. bomber icon for highest tier
-- The infantry icon now appears as a more realistic **soldier with a rifle** instead of a default-looking generic marker.
+### Seasons deepen and recede gradually
 
-### Multiplayer wording refresh
+- The game still uses spring, summer, autumn, and winter overlays.
+- Within a season, the effect progressively intensifies toward its centre and decreases toward the next season.
+- Snow and northern sea-ice tint become more visible in midwinter; spring rain particles become denser in mid-spring; summer light grows stronger in midsummer; autumn colour and leaves intensify mid-autumn.
+- The visual effects are synchronized to the game clock and **do not change combat mechanics**.
 
-- Visible uses of **campaign** in the main interface were changed to terms that better fit a live online multiplayer war/match.
-- The top bar, lobby, overview and victory UI now use **war**, **match**, or **theatre** language instead of presenting the game like a single-player campaign.
+### Province visibility and compact dock
 
-## Existing systems retained
+- Troop counters are restored directly on the map, showing troop counts and a small unit icon **only in provinces for which the server permits intelligence**. Classified areas remain blank—no question marks.
+- The bottom province information dock has a dark teal title strip and compact military/infrastructure tiles with labelled unit/building icons and quantities, inspired by the supplied reference screenshots.
+- On iPhone, the dock can scroll horizontally rather than swallowing the screen. The quick-action buttons remain above it.
 
-- Realtime eight-player public Quick Match and private six-digit room codes.
-- Historical city names, flags, nation selections and map terrain.
-- Alliances, break alliances, peace requests, war declarations, chat.
-- Mixed-unit armies, explicit staged order confirmation, timed travel, mid-route changes and recalls.
-- Combat resolution, ranking and victory conditions.
+### Soundtrack and controls
 
-## Game code
+- Replaced `client/assets/audio/music-loop.wav` with an **original 38.4-second orchestral march loop** written and synthesized specifically for WW2 Royale. It does not contain samples or music taken from third parties.
+- Background music starts after an initial click/tap in accordance with browser autoplay restrictions.
+- Button hover states darken slightly, and clicking depresses buttons with an inset shadow instead of brightening or lifting them.
+- Existing effects for construction, purchases, movement, chat, and attacks are retained.
 
-- `server/game.js` — authoritative building/army economy, movement, diplomacy, sight rules.
-- `server/index.js` — Node HTTP + native WebSocket multiplayer, input validation, room isolation.
-- `client/main.js` — Canvas map, overlays, information strip and controls.
-- `client/style.css`, `client/index.html` — desktop and mobile interfaces.
-- `client/assets/season-*.png` — four seasonal overlays.
-- `tools/make_seasons.py` — regenerate overlays (requires Python, Pillow and NumPy, but **not** for gameplay).
-- `shared/map.json` — 107 named interactive provinces and national borders.
+## Existing features retained
 
-## Development verification
+- 107 provinces and 17 nations, eight playable.
+- Private rooms with six-digit invite codes and eight-player public matchmaking.
+- Historical city names, national flags, dynamic territory colouring and diplomacy.
+- Infantry, tanks, bombers, defence, recruitment, buildings, bank income, and spy balloons.
+- Army travel and recall, troop selection sliders, live chat, and victory conditions.
+
+## Source files
+
+| File | Purpose |
+|---|---|
+| `shared/map.json` | Province definitions, capitals, adjacency, and `secondsPerYear` |
+| `client/assets/province-ids.png` | Authoritative selectable province raster |
+| `client/assets/province-lines.png` | Shared, connected province borders |
+| `client/assets/season-*.png` | Seasonal colour/ice/snow overlays |
+| `client/assets/audio/music-loop.wav` | Original orchestral background music |
+| `client/main.js` | Map renderer, visibility, controls, seasonal depth |
+| `client/style.css` | Desktop/mobile layouts and button interactions |
+| `server/game.js` | Authoritative travel, combat, economy, diplomacy |
+| `server/index.js` | HTTP/WebSocket multiplayer and asset delivery |
+| `tools/refine_borders.py` | Connected border and province contour regeneration |
+| `tools/make_score_115.py` | Regenerate the original score from code |
+
+## Testing
 
 Run:
 
@@ -78,12 +86,18 @@ npm run check
 npm test
 ```
 
-The test suite covers game-rule restrictions, economy, espionage, treaty rules, province counts, client structure and the multiplayer protocol. An additional optional offline browser smoke script at `tools/offline_browser_113.py` uses Python Playwright and locally installed Chromium; it does not make network requests.
+The browser smoke test `tools/offline_browser_116.py` uses Python Playwright and local Chromium when available. It exercises selected provinces, the bottom dock, buildings, troop purchasing and desktop/mobile viewport rendering.
 
 ## Deploy to ww2royale.com
 
-Upload the **contents** of this folder to the existing GitHub repository (in the same directory as its current `package.json`), commit, and deploy the latest commit to Render. Start command: `npm start`. Keep your already-configured GoDaddy/Render custom domain DNS records unchanged.
+Upload the **contents** of `ww2-royale-1.16` into the same folder of your GitHub repository used by Render. Commit, then allow Render to deploy the latest commit. Render's Start Command remains `npm start`. **No GoDaddy domain or DNS changes are needed** for this code update.
 
-**Important:** This game stores rooms and matches in **server memory**. A Render restart/redeploy resets active campaigns. Persistence and reconnection need a later backend milestone before a serious public launch. Existing in-memory sessions from version 1.13 are reset on redeploy; audio and map-presentation changes do not migrate an active live room.
+**Important limitation:** Multiplayer rooms and battles are still held in **server memory**. Active games are reset when the Render service restarts/redeploys. Do not describe the current backend as persistent or production-ready until database storage, disconnect recovery and live security/performance testing are added. Live deployment and physical-device iPhone testing are not part of these automated checks.
 
-This is still a tested development build, not a production security/performance audit. A live iPhone-to-public-Render end-to-end playthrough has not been completed here.
+## Version 1.16 updates
+
+- **Simplified Buildings tab:** five compact rows with building icon, name, level, effect, price and one action. The action is **Build** when the level is 0, **Upgrade** when it is already constructed but below its level cap, and **Max** at the cap. Unaffordable actions remain labelled Build/Upgrade but are disabled; their tooltip explains the cost.
+- Recruitment rows are compact with **+1** and **+5** purchases; spy balloon deployment is in a collapsible section.
+- **Calendar pacing:** the interval from 6 October of one year to 6 October the next is exactly 1,200 real seconds (20 minutes). Leap years receive 366 calendar days, other anniversary intervals receive 365. A game day is approximately **3.28 seconds** long, with exact timing depending on the number of days to the next anniversary.
+- Economy, movement speeds, buildings, music, map, and multiplayer rules are unchanged.
+

@@ -377,3 +377,124 @@
 button,.rail-btn,.quick-action,.primary-button,.secondary-button,.subtle-button,.header-button,.icon-mini,.square-btn{transition:transform .08s ease,filter .12s ease,border-color .12s ease,background .12s ease,box-shadow .12s ease}
 .header-button:active,.icon-mini:active,.primary-button:active,.secondary-button:active,.subtle-button:active,.square-btn:active{transform:translateY(1px) scale(.97);filter:brightness(1.12)}
 .quick-command .quick-action:active,.rail-btn:active,.building-shop-buy:active,.troop-buy-button:active{transform:translateY(1px) scale(.95);filter:brightness(1.16)}
+
+
+/* WW2 Royale 1.15 — province information command dock */
+.province-info-bar{
+  bottom:83px;width:min(930px,calc(100% - 236px));
+  padding:0;background:rgba(17,33,39,.91);
+  border:1px solid #8ca2a0a6;border-radius:4px;
+  box-shadow:0 9px 25px #0007;backdrop-filter:blur(8px);overflow:hidden;
+}
+.province-info-head{
+  min-height:33px;margin:0;padding:3px 12px;
+  background:linear-gradient(180deg,#315766,#244653);
+  border-bottom:1px solid #94a4a8b5;display:flex;align-items:center;justify-content:center;gap:10px;
+}
+.province-info-head strong{font:800 15px Inter,'Segoe UI',sans-serif;letter-spacing:.16em;color:#f3f6f2;text-shadow:0 1px 2px #0008;text-align:center;flex:1}
+.province-info-head span{font-size:9px;letter-spacing:.10em;color:#d6e4e3;max-width:180px;text-align:right}
+.intel-nation-flag{width:34px;height:22px;border-radius:2px;object-fit:cover;border:1px solid #ffffff77;box-shadow:0 2px 6px #0006}
+.province-info-data{padding:10px 13px 12px;display:flex;align-items:stretch;justify-content:center;gap:12px;flex-wrap:nowrap;min-width:0}
+.province-info-data .intel-group{display:flex;flex-direction:column;gap:6px;align-items:stretch;min-width:0;flex:none}
+.intel-section-title{text-align:center;color:#cbd6d4;font-size:9px;letter-spacing:.15em;font-weight:850}
+.intel-tiles{display:flex;gap:6px;justify-content:center;min-width:0}
+.intel-tile{background:rgba(54,70,74,.76);border:1px solid #82949599;border-radius:5px;min-width:65px;max-width:80px;width:68px;min-height:69px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;padding:4px 3px;box-shadow:inset 0 1px #ffffff10}
+.intel-tile-icon{display:grid;place-items:center;height:25px}
+.intel-tile-icon svg{width:24px;height:24px;stroke:#e3e7e0;stroke-width:1.9;fill:none}
+.intel-tile-count{color:#fff4d2;font:850 13px Inter,'Segoe UI',sans-serif;line-height:1.1}
+.intel-tile-label{color:#bacdcc;font-size:8px;letter-spacing:.04em;font-weight:750}
+.intel-classified{display:flex;align-items:center;gap:9px;color:#b5c1c6;font-weight:750;min-height:55px}
+.intel-classified svg{width:24px;height:24px;stroke:#c9d5da;fill:none}
+.intel-classified-title{font-size:12px;letter-spacing:.1em;color:#e1e7e4}
+.intel-classified small{font-size:10px;color:#b3c6cb;font-weight:500}
+.intel-spy{display:flex;align-items:center;gap:4px;font-size:10px;color:#d1deee}
+.intel-spy svg{width:17px;height:17px;stroke:#a1d7e7;fill:none}
+.intel-garrison{padding:5px 8px;max-width:190px}
+/* Tactile, subtle darkening rather than brightening and lifting on hover. */
+@media(hover:hover){
+  button:hover:not(:disabled),.rail-btn:hover:not(:disabled),.quick-command .quick-action:hover:not(:disabled){
+    filter:brightness(.88);transform:translateY(0);box-shadow:inset 0 2px 4px #0003;
+  }
+}
+button:active:not(:disabled),.quick-command .quick-action:active:not(:disabled),.rail-btn:active:not(:disabled){
+  filter:brightness(.78);transform:translateY(2px) scale(.975);box-shadow:inset 0 3px 9px #0009!important;
+}
+@media(max-width:1050px) and (min-width:701px){
+  .province-info-bar{width:min(790px,calc(100% - 145px));bottom:78px}
+  .intel-tile{width:55px;min-width:55px}
+  .province-info-data{gap:8px;padding:8px}
+}
+@media (max-width:700px), (pointer:coarse) and (max-width:920px){
+  .province-info-bar{left:7px;right:7px;transform:none;width:calc(100% - 14px);bottom:calc(79px + env(safe-area-inset-bottom,0px));max-height:172px;min-height:0;overflow:hidden;border-radius:5px}
+  .province-info-head{min-height:29px;padding:2px 7px;gap:5px}
+  .province-info-head strong{font-size:11px;letter-spacing:.08em}
+  .province-info-head span{font-size:8px;max-width:72px}
+  .intel-nation-flag{width:29px;height:19px;flex:0 0 29px}
+  .province-info-data{overflow-x:auto;overflow-y:hidden;justify-content:flex-start;padding:7px 7px 9px;gap:9px;max-height:132px;scrollbar-width:thin;touch-action:pan-x}
+  .intel-section-title{font-size:8px}
+  .intel-tiles{gap:4px}
+  .intel-tile{min-width:46px;width:46px;max-width:46px;min-height:62px;padding:3px 2px}
+  .intel-tile-icon{height:22px}.intel-tile-icon svg{width:20px;height:20px}
+  .intel-tile-count{font-size:12px}.intel-tile-label{font-size:7px}
+  .intel-classified{min-height:63px;flex-wrap:wrap;gap:4px}
+  .intel-classified small{width:100%;font-size:9px}
+  .quick-command{bottom:calc(214px + env(safe-area-inset-bottom,0px))}
+  .order-planner{bottom:calc(279px + env(safe-area-inset-bottom,0px))}
+}
+@media(max-width:375px){
+  .province-info-bar{bottom:calc(78px + env(safe-area-inset-bottom,0px))}
+  .quick-command{bottom:calc(212px + env(safe-area-inset-bottom,0px))}
+  .order-planner{bottom:calc(277px + env(safe-area-inset-bottom,0px))}
+}
+
+.weather-particle{transition:opacity 2s linear}
+.province-info-bar,.province-info-data{pointer-events:auto}
+
+/* Version 1.16 — compact, quickly scannable province construction. */
+.build-section-title{margin:0 0 9px!important;display:flex;align-items:baseline;justify-content:space-between;gap:7px}
+.build-section-title small{font-size:9px;font-weight:500;letter-spacing:0;color:#96adb6}
+.construction{padding-top:10px;margin-top:12px}
+.compact-balance{padding:9px 12px;margin:0 0 9px;border-radius:8px;min-height:46px}
+.compact-balance .balance-purse{flex-basis:28px;width:28px;height:28px;border-radius:6px}
+.compact-balance .balance-purse svg{width:17px;height:17px}
+.compact-balance .balance-text{display:flex;flex-direction:row;align-items:center;gap:10px}
+.compact-balance .balance-text strong{font-size:18px}
+.compact-build-catalogue{display:flex;flex-direction:column;gap:5px}
+.building-row{display:flex;align-items:center;gap:10px;min-height:61px;min-width:0;padding:7px 9px;background:linear-gradient(110deg,#253a47,#182c38);border:1px solid #5a788477;border-radius:8px;transition:border-color .14s,background .14s}
+.building-row:hover{border-color:#9ab6bcb0;background:linear-gradient(110deg,#293f4e,#1e3540)}
+.building-row-icon{flex:0 0 31px;width:31px;height:31px;display:grid;place-items:center;background:#b6cbd219;border:1px solid #91aeb333;border-radius:7px;color:#e2cc9f}
+.building-row-icon svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.building-row-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.building-row-heading{display:flex;align-items:center;gap:7px;min-width:0}
+.building-row-heading strong{font-size:12px;color:#f5e7cd;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.building-row-level{color:#b6e1ce;border:1px solid #619b8760;background:#30544840;border-radius:4px;padding:2px 4px;font-size:9px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.building-row-info small{font-size:9px;line-height:1.25;color:#b4cad0;overflow-wrap:anywhere}
+.building-row-actions{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;flex:0 0 77px}
+.building-row-price{font-size:10px;font-weight:800;color:#f0d59b;white-space:nowrap;font-variant-numeric:tabular-nums}
+.building-row .building-row-buy{flex:none;width:77px;min-height:29px;padding:5px 4px;font-size:11px;font-weight:800;border-radius:6px}
+.building-row.capped .building-row-level{color:#afc8d0;border-color:#718d9b77;background:#34434a80}
+.building-row.capped .building-row-price{color:#9eb1b6}
+.building-row.unaffordable{opacity:.78}
+.compact-recruit{gap:5px;margin-top:12px;padding-top:10px}
+.compact-recruit h3{font-size:12px;letter-spacing:.03em;margin-bottom:2px}
+.compact-recruit .troop-buy-card{min-height:49px;gap:8px;padding:6px 9px;border-radius:7px;flex-wrap:nowrap}
+.compact-recruit .troop-buy-emblem{flex:0 0 29px;width:29px;height:29px;border-radius:6px}
+.compact-recruit .troop-buy-emblem svg{width:18px;height:18px}
+.compact-recruit .troop-buy-info strong{font-size:11px}
+.compact-recruit .troop-buy-info small{font-size:9px}
+.compact-recruit .troop-buy-actions{margin-left:0;gap:4px;flex:0 0 auto}
+.compact-recruit .troop-buy-button{min-width:32px;padding:6px 5px;font-size:10px}
+.compact-spies{display:block;margin-top:11px;padding-top:9px;border-top:1px solid #7691a36a}
+.compact-spies summary{font-size:11px;font-weight:800;color:#dfd1af;cursor:pointer;padding:5px 3px}
+.compact-spies[open]{display:flex;flex-direction:column;gap:7px}
+.compact-spies .spy-item{padding:6px}
+@media(max-width:530px){
+ .building-row{padding:7px;gap:7px}
+ .building-row-actions{flex-basis:69px}
+ .building-row .building-row-buy{width:69px;min-height:32px}
+ .building-row-heading{gap:5px}
+ .building-row-info small{font-size:9px}
+ .compact-recruit .troop-buy-card{flex-wrap:nowrap}
+ .compact-recruit .troop-buy-actions{margin-left:0}
+ .compact-balance .balance-text{gap:7px}
+}

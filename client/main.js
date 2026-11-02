@@ -73,6 +73,7 @@ let soundState = {ready:false,music:null,enabled:true,lastButtonAt:0};
 let definition = new Map(), nationColor = {}, nationNames = {};
 let game = null, assigned = null, selected = null, hovered = null, room = null;
 let deployingBalloonId=null, currentSeason="autumn", seasonAssets={}, currentSeasonImage=null;
+let seasonIntensity=0.35, weatherIntensity=0.35;
 let labels = true, pendingOrder=null, draftTarget=null, redirectOrderId=null, redirectTarget=null, isPublicMatch=false;
 let lastCountSource=null,lastSidebarAt=0,lastChoiceKey='',lastBuildRenderKey='';
 let actionMode=null, territoryBorderCanvas=null, paintKey='';
@@ -136,23 +137,42 @@ function syncElapsed(){
   const h=Math.floor(n/3600),m=Math.floor(n%3600/60),sec=n%60;
   $('elapsedClock').textContent=h?`${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
 }
-function setSeason(season){
-  if(season===currentSeason&&$('weatherLayer').dataset.ready==='yes')return;
-  currentSeason=season;currentSeasonImage=seasonAssets[season]||null;
-  const weather=$('weatherLayer');weather.className='weather-layer '+season;weather.replaceChildren();
+function seasonalDepth(date){
+  // Progress grows from early season toward its centre, then decreases.
+  const month=date.getUTCMonth(), day=date.getUTCDate();
+  const seasonMonth=(month+1)%3; // Dec/Mar/Jun/Sep are 0, next months 1 and 2.
+  const progress=Math.min(1,(seasonMonth+(day-1)/30.5)/3);
+  return Math.max(.17,Math.min(1,.17+.83*Math.sin(Math.PI*progress)));
+}
+function setSeason(season, depth=0.5){
+  const weather=$('weatherLayer');
+  const next=Math.max(.17,Math.min(1,depth));
+  const changed=season!==currentSeason||weather.dataset.ready!=='yes';
+  seasonIntensity=next;weatherIntensity=next;
+  weather.style.opacity=String(.35+.65*next);
+  const updateParticleDensity=()=>{
+    const nodes=[...weather.querySelectorAll('.weather-particle')];
+    const visible=Math.round(nodes.length*next);
+    nodes.forEach((particle,i)=>{particle.style.opacity=i<visible?'':'0';});
+  };
+  if(!changed){updateParticleDensity();queueRender();return;}
+  currentSeason=season; currentSeasonImage=seasonAssets[season]||null;
+  weather.className='weather-layer '+season;weather.replaceChildren();
   if(season!=='summer'){
     const mobile=window.matchMedia('(max-width:700px)').matches;
-    const count=season==='winter'?(mobile?25:52):(mobile?11:23);
+    // Density increases visually toward the deepest part of the season.
+    const count=season==='winter'?(mobile?46:82):(mobile?24:45);
     for(let i=0;i<count;i++){
       const flake=document.createElement('span');flake.className='weather-particle';
       flake.style.setProperty('--x',`${(i*61.8034)%100}%`);
       flake.style.setProperty('--speed',`${6+(i%9)*1.1}s`);
       flake.style.setProperty('--delay',`${-(i*2.17)%15}s`);
       flake.style.setProperty('--drift',`${(i%2===0?1:-1)*(12+(i%8)*9)}px`);
-      flake.style.setProperty('--opacity',`${.30+(i%6)*.08}`);weather.append(flake);
+      flake.style.setProperty('--opacity',`${.30+(i%6)*.08}`);
+      weather.append(flake);
     }
   }
-  weather.dataset.ready='yes';queueRender();
+  weather.dataset.ready='yes';updateParticleDensity();queueRender();
 }
 function resize(){
   const rect=canvas.getBoundingClientRect();
@@ -295,46 +315,18 @@ function relationWith(owner){
   const key=[assigned,owner].sort().join(':');
   return game?.diplomacy?.[key]||'neutral';
 }
-function smoothLoop(loop, iterations=2){
-  let pts=(loop||[]).map(([x,y])=>({x,y}));
-  if(pts.length<4) return loop||[];
-  for(let n=0;n<iterations;n++){
-    const out=[];
-    for(let i=0;i<pts.length;i++){
-      const p=pts[i], q=pts[(i+1)%pts.length];
-      out.push({x:p.x*0.75+q.x*0.25, y:p.y*0.75+q.y*0.25});
-      out.push({x:p.x*0.25+q.x*0.75, y:p.y*0.25+q.y*0.75});
-    }
-    pts=out;
-  }
-  return pts.map(p=>[p.x,p.y]);
-}
-function displayLoops(province){
-  if(province._displayLoops) return province._displayLoops;
-  province._displayLoops=(province.paths||[]).map(loop=>smoothLoop(loop, province.nation==='PT'||province.nation==='ES'?3:2));
-  return province._displayLoops;
-}
+// Detailed province paths follow the actual ID-mask contours. No per-province
+// corner rounding: different neighbours must NEVER diverge from shared edges.
 function pathFor(province){
   if(province._path)return province._path;
   const path=new Path2D();
-  for(const loop of displayLoops(province)){
+  for(const loop of province.paths||[]){
     if(loop.length<3)continue;
     path.moveTo(loop[0][0],loop[0][1]);
     for(let i=1;i<loop.length;i++)path.lineTo(loop[i][0],loop[i][1]);
     path.closePath();
   }
   province._path=path;return path;
-}
-function buildSmoothBorderCanvas(){
-  if(!map) return null;
-  const layer=document.createElement('canvas'); layer.width=map.width; layer.height=map.height;
-  const c=layer.getContext('2d');
-  c.lineJoin='round'; c.lineCap='round';
-  c.strokeStyle='rgba(18,22,24,.8)'; c.lineWidth=1.2;
-  for(const p of map.provinces){ c.stroke(pathFor(p)); }
-  c.strokeStyle='rgba(255,245,214,.24)'; c.lineWidth=0.65;
-  for(const p of map.provinces){ c.stroke(pathFor(p)); }
-  return layer;
 }
 function drawOutline(id,colour,line){
   if(!id)return;
@@ -590,29 +582,49 @@ function drawSpyBalloons(){
   ctx.restore();
 }
 function drawTroops(){
-  if(!game)return;
-  const f=Math.max(12,Math.min(20,12/camera.scale));
-  ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`700 ${f}px Inter,Arial,sans-serif`;
+  if(!game||!map)return;
+  ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';
+  const scale=Math.max(.75,Math.min(2.0,camera.scale));
+  const size=12/scale;
+  ctx.font=`800 ${size}px Inter,Arial,sans-serif`;
   for(const p of map.provinces){
-    const state=game.provinces[p.id-1],visible=state.units!==null;
-    const str=visible?String(unitTotal(state.units)):'?';
-    const w=Math.max(f*1.5,ctx.measureText(str).width+12),h=f+9;
-    ctx.fillStyle='rgba(7,17,22,.78)';ctx.strokeStyle=state.owner===assigned?'#f7d89b':'rgba(240,243,230,.5)';
-    ctx.lineWidth=1;ctx.beginPath();ctx.roundRect(p.x-w/2,p.y-h/2,w,h,4);ctx.fill();ctx.stroke();
-    ctx.fillStyle='#f7f2e6';ctx.fillText(str,p.x,p.y+1);
-    // Allied garrisons are distinct armies, NOT part of the host's troop stack.
-    // Render each allied nation's deployed force separately at this province.
-    const stationed=Object.entries(state.garrison||{}).filter(([,stack])=>unitTotal(stack)>0);
-    for(let i=0;i<stationed.length;i++){
-      const [nation,stack]=stationed[i];
-      const label=`${nation} ${unitTotal(stack)}`;
-      const width=Math.max(f*1.7,ctx.measureText(label).width+12);
-      const x=p.x, y=p.y+h+5+i*(h+3);
-      ctx.fillStyle='rgba(7,17,22,.94)';
-      ctx.strokeStyle=nationColor[nation]||'#fff';ctx.lineWidth=2;
-      ctx.beginPath();ctx.roundRect(x-width/2,y-h/2,width,h,4);ctx.fill();ctx.stroke();
-      ctx.fillStyle='#fff';ctx.fillText(label,x,y+1);
+    const state=game.provinces?.[p.id-1];
+    // The backend redacts non-visible units. Never show question marks or numbers
+    // for classified provinces; never infer counts from ownership alone.
+    if(!state?.visible||!state.units)continue;
+    const count=unitTotal(state.units);
+    const garrisons=Object.entries(state.garrison||{}).filter(([,a])=>unitTotal(a)>0);
+    if(!count&&!garrisons.length)continue;
+    const type=selectedArmyIcon(state.units);
+    const icon=unitArt[type];
+    const x=p.x,y=p.y;
+    const label=String(count);
+    const width=Math.max(27/scale,ctx.measureText(label).width+22/scale),height=20/scale;
+    ctx.save();
+    ctx.shadowColor='rgba(0,0,0,.42)';ctx.shadowBlur=4/scale;
+    ctx.fillStyle=state.owner===assigned?'rgba(14,41,41,.9)':'rgba(24,34,39,.84)';
+    ctx.strokeStyle=state.owner===assigned?'rgba(217,239,207,.84)':'rgba(215,227,229,.7)';
+    ctx.lineWidth=1/scale;
+    ctx.beginPath();ctx.roundRect(x-width/2,y-height/2,width,height,3/scale);ctx.fill();ctx.stroke();
+    ctx.shadowBlur=0;
+    const iconSize=14/scale;
+    if(icon?.complete)ctx.drawImage(icon,x-width/2+2/scale,y-iconSize/2,iconSize,iconSize);
+    ctx.fillStyle='#f7f0db';ctx.textAlign='right';
+    ctx.fillText(label,x+width/2-4/scale,y+0.6/scale);
+    ctx.restore();
+    let line=0;
+    for(const [nation,stack] of garrisons){
+      const allyCount=unitTotal(stack);
+      if(!allyCount)continue;
+      const allyText=`${nation} ${allyCount}`;
+      ctx.font=`800 ${10/scale}px Inter,Arial,sans-serif`;
+      const aw=ctx.measureText(allyText).width+12/scale;
+      const ay=y+height/2+9/scale+(line++)*15/scale;
+      ctx.fillStyle='rgba(11,30,39,.88)';ctx.strokeStyle=nationColor[nation]||'#a1cfff';
+      ctx.beginPath();ctx.roundRect(x-aw/2,ay-6/scale,aw,13/scale,3/scale);ctx.fill();ctx.stroke();
+      ctx.fillStyle='#f2f6ff';ctx.textAlign='center';ctx.fillText(allyText,x,ay);
     }
+    ctx.font=`800 ${size}px Inter,Arial,sans-serif`;
   }
   ctx.restore();
 }
@@ -621,10 +633,15 @@ function draw(){
   ctx.fillStyle='#092632';ctx.fillRect(0,0,camera.cw,camera.ch);
   if(!map||!mapImage)return;updateTransform();
   ctx.save();ctx.translate(camera.tx,camera.ty);ctx.scale(camera.scale,camera.scale);
-  ctx.drawImage(mapImage,0,0);if(tintCanvas)ctx.drawImage(tintCanvas,0,0);if(currentSeasonImage)ctx.drawImage(currentSeasonImage,0,0);
-  if(smoothBorderCanvas)ctx.drawImage(smoothBorderCanvas,0,0); else if(borderImage)ctx.drawImage(borderImage,0,0); if(territoryBorderCanvas)ctx.drawImage(territoryBorderCanvas,0,0);drawLabels();drawMovements();drawDraftRoute();
+  ctx.drawImage(mapImage,0,0);if(tintCanvas)ctx.drawImage(tintCanvas,0,0);if(currentSeasonImage){
+    ctx.save();
+    ctx.globalAlpha=.23+.77*seasonIntensity;
+    ctx.drawImage(currentSeasonImage,0,0);
+    ctx.restore();
+  }
+  if(borderImage)ctx.drawImage(borderImage,0,0); if(territoryBorderCanvas)ctx.drawImage(territoryBorderCanvas,0,0);drawLabels();drawMovements();drawDraftRoute();
   drawOutline(hovered,'rgba(251,236,157,.8)',2.7);drawOutline(draftTarget?null:selected,'#ffdc87',4);drawOutline(redirectTarget,'#ffbc76',3);
-  drawSpyBalloons();ctx.restore();if(game?.movements?.length)queueRender();
+  drawSpyBalloons();drawTroops();ctx.restore();if(game?.movements?.length)queueRender();
 }
 function createButton(label,action,cls=''){
   const b=document.createElement('button');b.type='button';b.textContent=label;
@@ -672,28 +689,61 @@ function renderProvinceStats(state,visible){
   }
   builds.append(list);
 }
+let lastIntelRenderKey="";
 function renderProvinceIntel(){
   const bar=$('provinceInfoBar');bar.hidden=!(selected&&game);if(bar.hidden)return;
-  const state=game.provinces?.[selected-1],province=definition.get(selected);if(!state||!province){bar.hidden=true;return;}
-  $('intelProvince').textContent=province.name;
+  const state=game.provinces?.[selected-1],province=definition.get(selected);
+  if(!state||!province){bar.hidden=true;lastIntelRenderKey='';return;}
+  // Preserve horizontal scroll position in the compact mobile intelligence dock.
+  // Server snapshots arrive often; rebuild tiles only when intelligence changes.
+  const intelKey=JSON.stringify([selected,state.owner,state.visible,state.units,state.buildings,state.garrison,
+    (game.spyBalloons||[]).filter(b=>b.province===selected).map(b=>b.id)]);
+  if(lastIntelRenderKey===intelKey)return;
+  lastIntelRenderKey=intelKey;
+  $('intelProvince').textContent=province.name.toUpperCase();
   const status=relationWith(state.owner);
-  $('intelRelation').textContent=`${nationNames[state.owner]||state.owner} · ${status.toUpperCase()}`;
+  $('intelRelation').textContent=status==='self'?'YOUR PROVINCE':status==='ally'?'ALLIED':status==='war'?'AT WAR':'NEUTRAL';
+  const flag=$('intelNationFlag');
+  flag.src=`/assets/flags/${state.owner}.svg`; flag.alt=(nationNames[state.owner]||state.owner)+' flag';
   const out=$('intelDetails');out.replaceChildren();
-  if(!state.visible){out.append(elem('span','Classified — border this province, ally with its owner, or scout within two provinces using a spy balloon.','intel-locked'));return;}
-  const makeGroup=(arr)=>{
+  if(!state.visible){
+    const classified=elem('div','','intel-classified');
+    classified.append(iconSvg('ico-target'),elem('div','INTELLIGENCE CLASSIFIED','intel-classified-title'),elem('small','Border, ally with or scout this province to reveal forces and buildings.'));
+    out.append(classified);return;
+  }
+  const groups=[
+    {title:'ARMY',items:[
+      ['ico-users',state.units?.infantry||0,'INFANTRY'],
+      ['ico-tank',state.units?.tank||0,'TANKS'],
+      ['ico-airport',state.units?.bomber||0,'BOMBERS']
+    ]},
+    {title:'INFRASTRUCTURE',items:[
+      ['ico-barracks',state.buildings?.barracks||0,'BARRACKS'],
+      ['ico-autoshop',state.buildings?.workshop||0,'WORKSHOP'],
+      ['ico-airport',state.buildings?.airport||0,'AIRPORT'],
+      ['ico-bank',state.buildings?.bank||0,'BANK'],
+      ['ico-fort',state.buildings?.defense||0,'DEFENCE']
+    ]}
+  ];
+  for(const section of groups){
     const group=elem('div','','intel-group');
-    for(const [icon,value,label] of arr){
-      const entry=elem('span','','intel-entry');entry.title=label;entry.append(iconSvg(icon),document.createTextNode(String(value)));group.append(entry);
+    group.append(elem('span',section.title,'intel-section-title'));
+    const tiles=elem('div','','intel-tiles');
+    for(const [icon,count,label] of section.items){
+      const tile=elem('div','','intel-tile');tile.title=label;
+      const pictogram=elem('span','','intel-tile-icon');pictogram.append(iconSvg(icon));
+      tile.append(pictogram,elem('strong',String(count),'intel-tile-count'),elem('small',label,'intel-tile-label'));
+      tiles.append(tile);
     }
-    return group;
-  };
-  out.append(makeGroup([['ico-users',state.units?.infantry||0,'Infantry'],['ico-tank',state.units?.tank||0,'Tanks'],['ico-airport',state.units?.bomber||0,'Bombers']]));
-  out.append(elem('span','','intel-separator'));
-  out.append(makeGroup([['ico-barracks',state.buildings?.barracks||0,'Barracks'],['ico-autoshop',state.buildings?.workshop||0,'Workshop'],['ico-airport',state.buildings?.airport||0,'Airport'],['ico-bank',state.buildings?.bank||0,'Bank'],['ico-fort',state.buildings?.defense||0,'Defence']]));
-  const balloonCount=(game.spyBalloons||[]).filter(b=>b.province===selected).length;
-  if(balloonCount)out.append(makeGroup([['ico-airport',balloonCount,'Friendly spy balloons']]));
+    group.append(tiles);out.append(group);
+  }
+  const balloons=(game.spyBalloons||[]).filter(b=>b.province===selected);
+  if(balloons.length){
+    const spy=elem('span','','intel-spy');spy.title='Friendly reconnaissance balloons';
+    spy.append(iconSvg('ico-airport'),document.createTextNode('Spy balloons '+balloons.length));out.append(spy);
+  }
   const allies=Object.entries(state.garrison||{}).filter(([,a])=>unitTotal(a)>0);
-  if(allies.length)out.append(elem('span',allies.map(([n,a])=>`${nationNames[n]} garrison: ${unitTotal(a)}`).join(' · '),'intel-garrison'));
+  if(allies.length)out.append(elem('div',allies.map(([n,a])=>`${nationNames[n]} garrison: ${unitTotal(a)}`).join(' · '),'intel-garrison'));
 }
 function iconSvg(name){
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
@@ -717,35 +767,40 @@ const TRAINING_TYPES=[
 function renderBuildButtons(state){
   const out=$('buildOptions');out.replaceChildren();
   const balance=Number(game?.money||0),province=selected;
-  const summary=elem('div','','construction-balance');
+  const summary=elem('div','','construction-balance compact-balance');
   const balanceLeft=elem('div','','construction-balance-left');
   const purse=elem('span','','balance-purse');purse.append(iconSvg('ico-coins'));
-  const balanceText=elem('div','','balance-text');balanceText.append(elem('span','AVAILABLE TREASURY'),elem('strong',cash(balance)));
-  balanceLeft.append(purse,balanceText);summary.append(balanceLeft,elem('small','Upgrades stay in this province.','balance-help'));
+  const balanceText=elem('div','','balance-text');balanceText.append(elem('span','TREASURY'),elem('strong',cash(balance)));
+  balanceLeft.append(purse,balanceText);summary.append(balanceLeft);
   out.append(summary);
-  const list=elem('div','','build-catalogue');
+  const list=elem('div','','build-catalogue compact-build-catalogue');
   for(const bld of BUILDING_TYPES){
-    const count=state.buildings?.[bld.kind]||0,capped=count>=bld.max,canAfford=balance>=bld.cost;
-    const card=elem('article','','building-shop-card'+(capped?' capped':'')+(!canAfford&&!capped?' unaffordable':''));
-    const top=elem('div','','building-shop-top'),emblem=elem('div','','building-shop-emblem');emblem.append(iconSvg(bld.icon));
-    const heading=elem('div','','building-shop-heading');heading.append(elem('span',bld.category,'building-shop-category'),elem('strong',bld.label));
-    top.append(emblem,heading,elem('span',`LV ${count} / ${bld.max}`,'building-count-pill'));
-    const effect=elem('div','','building-shop-effect');effect.append(elem('span',bld.detail),elem('strong',bld.rate));
-    const bottom=elem('div','','building-shop-bottom'),price=elem('div','','building-shop-price');price.append(elem('small','UPGRADE COST'),elem('strong',cash(bld.cost)));
-    const buy=createButton(capped?'MAX LEVEL':canAfford?'Upgrade':'Need more $',()=>{
+    const count=Number(state.buildings?.[bld.kind]||0),capped=count>=bld.max,canAfford=balance>=bld.cost;
+    const card=elem('article','','building-row'+(capped?' capped':'')+(!canAfford&&!capped?' unaffordable':''));
+    const emblem=elem('span','','building-row-icon');emblem.append(iconSvg(bld.icon));
+    const info=elem('div','','building-row-info');
+    const heading=elem('div','','building-row-heading');
+    heading.append(elem('strong',bld.label),elem('span',`Lv ${count}/${bld.max}`,'building-row-level'));
+    info.append(heading,elem('small',bld.detail));
+    const actions=elem('div','','building-row-actions');
+    const buttonLabel=capped?'Max':count===0?'Build':'Upgrade';
+    const price=elem('span',capped?'Complete':cash(bld.cost),'building-row-price');
+    const buy=createButton(buttonLabel,()=>{
       if(!selected||selected!==province)return;
       socket.emit('build',{province,kind:bld.kind});
-    },'building-shop-buy');buy.disabled=capped||!canAfford;
-    bottom.append(price,buy);card.append(top,effect,bottom);list.append(card);
+    },'building-shop-buy building-row-buy');
+    buy.disabled=capped||!canAfford;
+    buy.title=capped?`${bld.label} at maximum level`:canAfford?`${buttonLabel} ${bld.label} for ${cash(bld.cost)}`:`Need ${cash(bld.cost)} to ${buttonLabel.toLowerCase()} ${bld.label.toLowerCase()}`;
+    actions.append(price,buy);card.append(emblem,info,actions);list.append(card);
   }
   out.append(list);
-  const recruit=elem('section','','troop-shop');recruit.append(elem('h3','RECRUIT & EQUIP UNITS'));
+  const recruit=elem('section','','troop-shop compact-recruit');recruit.append(elem('h3','RECRUIT UNITS'));
   for(const unit of TRAINING_TYPES){
     const built=unit.kind==='infantry'?state.buildings?.barracks:unit.kind==='tank'?state.buildings?.workshop:state.buildings?.airport;
     const unlocked=Number(built||0)>=unit.level();
     const card=elem('div','','troop-buy-card');
     const emblem=elem('div','','troop-buy-emblem');emblem.append(iconSvg(unit.icon));
-    const info=elem('div','','troop-buy-info');info.append(elem('strong',`${unit.label} · ${cash(unit.cost)} each`),elem('small',unlocked?'Available for immediate purchase':unit.requirement));
+    const info=elem('div','','troop-buy-info');info.append(elem('strong',unit.label),elem('small',unlocked?`${cash(unit.cost)} per unit`:unit.requirement));
     const actions=elem('div','','troop-buy-actions');
     for(const amount of [1,5]){
       const button=createButton(`+${amount}`,()=>socket.emit('buyUnit',{province:selected,type:unit.kind,amount}),'troop-buy-button');
@@ -755,16 +810,18 @@ function renderBuildButtons(state){
   }
   out.append(recruit);
   const spies=(game?.spyBalloons||[]).filter(b=>b.nation===assigned);
-  const spyPanel=elem('section','','spy-section');spyPanel.append(elem('strong',`RECONNAISSANCE BALLOONS (${spies.length}/20)`));
-  spyPanel.append(elem('small','Balloons reveal province troops and buildings within a radius of two bordering provinces. Move them anywhere; placement is immediate.','intel-locked'));
+  const spyPanel=elem('details','','spy-section compact-spies');
+  spyPanel.append(elem('summary',`Spy balloons (${spies.length}/20)`));
+  spyPanel.append(elem('small','Reveal troops and buildings two provinces away. Stationing is immediate.','intel-locked'));
   for(const spy of spies){
-    const row=elem('div','','spy-item');row.append(elem('span',`Balloon #${spy.id} · ${definition.get(spy.province)?.name||'Unknown'}`));
+    const row=elem('div','','spy-item');row.append(elem('span',`#${spy.id} · ${definition.get(spy.province)?.name||'Unknown'}`));
     const button=createButton('Station',()=>{
       deployingBalloonId=spy.id;setPanel(null);notice('Select any map province to station the balloon.');
     },'spy-deploy');row.append(button);spyPanel.append(row);
   }
   out.append(spyPanel);
 }
+
 function updateBuildCatalogue(state){
   const balance=Number(game?.money||0);
   // Avoid destroying purchase buttons mid-click during frequent state snapshots.
@@ -1211,7 +1268,7 @@ function updateCampaignClock(state){
   $('campaignDate').textContent=date.toLocaleDateString('en-GB',{timeZone:'UTC',day:'numeric',month:'short',year:'numeric'}).toUpperCase();
   const month=date.getUTCMonth();const season=month===11||month<=1?'winter':month<=4?'spring':month<=7?'summer':'autumn';
   $('seasonBadge').textContent=`${season.toUpperCase()} · ${date.getUTCFullYear()}`;
-  setSeason(season);syncElapsed();
+  setSeason(season,seasonalDepth(date));syncElapsed();
 }
 socket.on('connect',()=>{
   $('connectionDot').classList.add('online');$('connectionText').textContent='Server connected';
@@ -1276,7 +1333,7 @@ setInterval(()=>{
     const sc=scratch.getContext('2d',{willReadFrequently:true});sc.drawImage(territoryImage,0,0);
     idPixels=sc.getImageData(0,0,map.width,map.height).data;
     sc.clearRect(0,0,map.width,map.height);sc.drawImage(mapImage,0,0);originalPixels=sc.getImageData(0,0,map.width,map.height).data;
-    smoothBorderCanvas=buildSmoothBorderCanvas();
+    // Shared pixel-perfect borders loaded from province-lines.png; no independent smoothing.
     updateSidebar();if(game){updateLabels();rebuildTint();}resize();if(assigned)focusNationOnMobile(assigned);new ResizeObserver(resize).observe(canvas.parentElement);
   }catch(e){console.error('Game initialization failed:',e);notice(`Map initialization error: ${e.message||e}`);}
 })();

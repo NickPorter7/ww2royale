@@ -17,6 +17,10 @@ const players=[];
 try{
  let okay=false;for(let i=0;i<100;i++){try{const r=await fetch(`http://127.0.0.1:${port}/map.json`);if(r.ok){okay=true;break;}}catch{}await sleep(30);}assert(okay,'server starts');
  for(const asset of ['/','/main.js','/style.css','/map.json','/assets/europe-map.png','/assets/province-ids.png','/assets/province-lines.png','/assets/season-spring.png','/assets/season-summer.png','/assets/season-autumn.png','/assets/season-winter.png'])assert((await fetch(`http://127.0.0.1:${port}${asset}`)).ok,asset);
+ const audio=await fetch(`http://127.0.0.1:${port}/assets/audio/music-loop.wav`);
+ assert(audio.ok,'royalty-free game soundtrack served');
+ assert.match(audio.headers.get('content-type')||'',/audio\/wav/);
+ assert(Number(audio.headers.get('content-length'))>50000,'soundtrack must contain playable audio');
  const map=await(await fetch(`http://127.0.0.1:${port}/map.json`)).json();assert.equal(map.provinces.length,107);
  const a=new P(),b=new P();players.push(a,b);await Promise.all(players.map(p=>p.ready()));
  a.send('createRoom');const x=await a.pop('joined');assert(/^[0-9]{6}$/.test(x.code));

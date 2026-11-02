@@ -90,11 +90,33 @@ test('alliance, peace, and break remain functional',()=>{
  const g=make();changeDiplomacy(g,'FR','GB','requestAlly');changeDiplomacy(g,'GB','FR','acceptAlly');assert.equal(relation(g,'FR','GB'),'ally');
  changeDiplomacy(g,'FR','GB','breakAlliance');assert.equal(relation(g,'FR','GB'),'neutral');
 });
-test('date tracker 6 October 1939 increments every 10 seconds',()=>{
- const g=make();assert.equal(viewFor(g,'FR',100000).campaignDay,0);
- assert.equal(viewFor(g,'FR',109999).campaignDay,0);
- assert.equal(viewFor(g,'FR',110000).campaignDay,1);
- assert.equal(viewFor(g,'FR',200000).campaignDay,10);
+test('in-game year takes exactly 20 minutes and leap years are preserved',()=>{
+ const g=make(),base=100000;
+ const day=(ms)=>viewFor(g,'FR',base+ms).campaignDay;
+ const date=(ms)=>new Date(Date.UTC(1939,9,6)+day(ms)*86400000).toISOString().slice(0,10);
+ assert.equal(map.secondsPerYear,1200);
+ assert.equal(day(0),0);
+ // October 6 1939 -> October 6 1940 spans the 1940 leap day (366 days).
+ assert.equal(date(0),'1939-10-06');
+ assert.equal(day(3278),0);
+ assert.equal(day(3279),1);
+ assert.equal(day(1199999),365);
+ assert.equal(day(1200000),366);
+ assert.equal(date(1200000),'1940-10-06');
+ // The next anniversary interval contains 365 calendar days.
+ assert.equal(day(2400000),731);
+ assert.equal(date(2400000),'1941-10-06');
+ assert.equal(date(3600000),'1942-10-06');
+});
+
+test('all military travel speeds are 1.5x with tanks slowest',()=>{
+ assert.deepEqual(MOVE_MS,{infantry:15000,tank:30000,bomber:10500});
+ for(const [type,expected] of Object.entries(MOVE_MS)){
+  const p=map.provinces.find(p=>p.nation==='FR'&&p.neighbors.some(n=>map.provinces[n-1].nation==='FR'));
+  const to=dst(p,'FR'),g=make();g.provinces[p.id-1].units={infantry:10,tank:3,bomber:3};
+  const o=orderMovement(g,'FR',{from:p.id,to:to.id,units:{[type]:1},kind:'move'},100100);
+  assert.equal(o.arrivalAt-o.startedAt,expected,`${type} hop timing`);
+ }
 });
 test('107 provinces and victory thresholds remain functional',()=>{
  const g=make();assert.equal(g.winner,null);

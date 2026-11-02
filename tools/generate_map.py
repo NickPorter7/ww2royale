@@ -392,7 +392,8 @@ mapdata = {
     'width': w,
     'height': h,
     'startDate': '1939-10-06',
-    'secondsPerDay': 10,
+    'secondsPerYear': 1200,
+    'secondsPerDay': 1200/365,  # nominal only; server uses exact anniversary lengths
     'playableNations': playable,
     'nations': {c: {'id': c, 'name': name[c], 'color': colour[c], 'playable': c in playable, 'capital': province_name_anchors[c][0][0]} for c in ids},
     'provinces': provinces,

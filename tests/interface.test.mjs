@@ -71,3 +71,39 @@ test('1.13 province information, season and elapsed HUD plus toast styles exist'
   assert.match(js,/deployingBalloonId/);
   assert.match(css,/toastFloat 3s/);
 });
+
+
+test('1.15 detailed connected borders use shared ID raster without rounding',()=>{
+ assert.doesNotMatch(js,/function smoothLoop\(/);
+ assert.match(js,/if\(borderImage\)ctx\.drawImage\(borderImage,0,0\)/);
+ assert.match(js,/function pathFor\(province\)/);
+ assert.match(js,/drawOutline\(hovered/);
+});
+test('1.15 visible province markers never reveal redacted troop numbers',()=>{
+ assert.match(js,/function drawTroops\(\)/);
+ assert.match(js,/if\(!state\?\.visible\|\|!state\.units\)continue/);
+ assert.match(js,/drawSpyBalloons\(\);drawTroops\(\)/);
+ assert.match(js,/function renderProvinceIntel\(\)/);
+ assert.match(html,/id="intelNationFlag"/);
+ assert.match(css,/\.intel-tile\{/);
+});
+test('1.15 progressive seasons and date speed are represented',()=>{
+ assert.match(js,/function seasonalDepth\(date\)/);
+ assert.match(js,/setSeason\(season,seasonalDepth\(date\)\)/);
+ assert.match(js,/ctx\.globalAlpha=\.23\+\.77\*seasonIntensity/);
+ assert.match(html,/1 in-game year every 20 minutes/);
+});
+test('1.15 buttons visibly darken on hover and depress on click',()=>{
+ assert.match(css,/brightness\(\.88\)/);
+ assert.match(css,/translateY\(2px\) scale\(\.975\)/);
+});
+
+test('1.16 construction rows have Build, Upgrade and Max states, with compact recruitment',()=>{
+ assert.match(js,/const buttonLabel=capped\?'Max':count===0\?'Build':'Upgrade'/);
+ assert.match(js,/building-row-info/);
+ assert.match(js,/building-row-actions/);
+ assert.match(js,/const spyPanel=elem\('details','',\s*'spy-section compact-spies'\)/);
+ assert.match(css,/\.compact-build-catalogue\{/);
+ assert.match(css,/\.building-row-buy\{/);
+ assert.match(css,/\.compact-recruit\{/);
+});
