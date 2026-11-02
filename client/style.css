@@ -524,3 +524,46 @@ button:active:not(:disabled),.quick-command .quick-action:active:not(:disabled),
   .header-corner-logo{width:30px;height:30px;flex-basis:30px;}
   .lobby-brand-logo{width:min(178px,46vw);max-height:155px;margin:-5px auto 4px;}
 }
+
+/* 1.19.4 — mobile header: two non-overlapping rows for branding and HUD. */
+@media (max-width:700px), (pointer:coarse) and (max-width:920px) {
+  .topbar {
+    height:100px;
+    min-height:100px;
+    display:grid;
+    grid-template-columns:minmax(0,1fr);
+    grid-template-rows:40px 42px;
+    align-content:center;
+    justify-items:stretch;
+    row-gap:4px;
+    padding:4px 10px;
+    overflow:hidden;
+  }
+  .brand {
+    grid-row:1;
+    min-width:0;
+    width:100%;
+    justify-content:flex-start;
+  }
+  .brand-main {font-size:16px;line-height:1.2;white-space:nowrap;}
+  .header-right {
+    grid-row:2;
+    min-width:0;
+    max-width:100%;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:5px;
+  }
+  .elapsed-hud {flex:0 0 auto;min-width:60px;margin:0;}
+  .header-right .hud-stat {flex:0 1 auto;min-width:0;}
+  .header-right .server-strip {flex:0 1 auto;min-width:0;overflow:hidden;}
+  .header-right .room-value {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .header-right .header-button {flex:0 0 auto;min-height:34px;padding:6px 8px;}
+  .header-corner-logo {width:29px;height:29px;flex:0 0 29px;object-fit:contain;}
+  .layout {height:calc(100dvh - 100px);}
+}
+@media (max-width:385px) {
+  .header-right .server-strip {display:none;}
+  .header-right {gap:7px;}
+}

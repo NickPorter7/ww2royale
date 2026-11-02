@@ -687,7 +687,11 @@ function draw(){
     ctx.drawImage(currentSeasonImage,0,0);
     ctx.restore();
   }
-  if(provinceBorderCanvas)ctx.drawImage(provinceBorderCanvas,0,0); else if(borderImage)ctx.drawImage(borderImage,0,0); if(territoryBorderCanvas)ctx.drawImage(territoryBorderCanvas,0,0);drawLabels();drawMovements();drawDraftRoute();
+  // Province boundaries use the shared, pixel-aligned border asset.
+  // Previous release referenced a removed canvas and crashed all map rendering.
+  if(borderImage)ctx.drawImage(borderImage,0,0);
+  if(territoryBorderCanvas)ctx.drawImage(territoryBorderCanvas,0,0);
+  drawLabels();drawMovements();drawDraftRoute();
   drawOutline(hovered,'rgba(251,236,157,.8)',2.7);drawOutline(draftTarget?null:selected,'#ffdc87',4);drawOutline(redirectTarget,'#ffbc76',3);
   drawSpyBalloons();drawTroops();ctx.restore();if(game?.movements?.length)queueRender();
 }
@@ -982,14 +986,20 @@ function renderRankings(){
   }
 }
 function renderNationChoices(){
-  if(!map)return;
-  const key=(game?.occupied||[]).join(',')+'|'+assigned+'|'+isPublicMatch;if(key===lastChoiceKey)return;lastChoiceKey=key;
+  if(!map?.nations)return;
+  // Use the authoritative map metadata, not the separately populated label cache.
+  // The lobby can receive a server snapshot while seasonal images are still loading.
+  const playable=Object.keys(map.nations).filter(id=>map.nations[id].playable);
+  const names=playable.map(id=>map.nations[id].name || nationNames[id] || id);
+  const key=JSON.stringify([(game?.occupied||[]),assigned,isPublicMatch,playable,names]);
+  if(key===lastChoiceKey)return;
+  lastChoiceKey=key;
   const out=$('nationChoices');out.replaceChildren();
   const random=createButton('🎲 Pick random available nation',()=>socket.emit('chooseRandomNation'), 'nation-choice random-nation');
   if(assigned)random.disabled=true;out.append(random);
-  for(const id of Object.keys(map.nations).filter(id=>map.nations[id].playable)){
-    const occupied=game?.occupied?.includes(id)&&assigned!==id;
-    const b=createButton(`${nationNames[id]} ${occupied?'(TAKEN)':''}`,()=>socket.emit('chooseNation',id),'nation-choice');b.disabled=!!occupied||!!assigned;
+  for(let i=0;i<playable.length;i++){
+    const id=playable[i],occupied=game?.occupied?.includes(id)&&assigned!==id;
+    const b=createButton(`${names[i]}${occupied?' (TAKEN)':''}`,()=>socket.emit('chooseNation',id),'nation-choice');b.disabled=!!occupied||!!assigned;
     b.prepend(nationFlag(id));out.append(b);
   }
 }
@@ -1380,10 +1390,14 @@ setInterval(()=>{
       image('/assets/units/infantry.svg'),image('/assets/units/tank.svg'),image('/assets/units/bomber.svg'),image('/assets/units/balloon.svg')
     ]);
     map=data;mapImage=terrain;territoryImage=territories;borderImage=borders; unitArt={infantry:infantryIcon,tank:tankIcon,bomber:bomberIcon,balloon:balloonIcon};
+    // Populate nation labels before awaiting optional seasonal artwork. The lobby
+    // can render during these image loads and must never display "undefined".
+    for(const [id,nation] of Object.entries(map.nations)){nationColor[id]=nation.color;nationNames[id]=nation.name;}
+    lastChoiceKey='';
+    renderNationChoices();
     for(const season of ['spring','summer','autumn','winter']){try{seasonAssets[season]=await image('/assets/season-'+season+'.png');}catch(error){console.warn('Missing seasonal asset',season,error);}}
     currentSeasonImage=seasonAssets[currentSeason]||null;
     for(const p of map.provinces)definition.set(p.id,p);
-    for(const [id,nation] of Object.entries(map.nations)){nationColor[id]=nation.color;nationNames[id]=nation.name;}
     const scratch=document.createElement('canvas');scratch.width=map.width;scratch.height=map.height;
     const sc=scratch.getContext('2d',{willReadFrequently:true});sc.drawImage(territoryImage,0,0);
     idPixels=sc.getImageData(0,0,map.width,map.height).data;

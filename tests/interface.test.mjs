@@ -1,3 +1,4 @@
+import * as vmModule from 'node:vm';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -118,3 +119,39 @@ test('1.19.1 home-screen, corner branding, and favicon metadata use supplied emb
   assert.match(css,/\.lobby-brand-logo\s*\{/);
   assert.match(css,/\.header-corner-logo\s*\{/);
 });
+
+
+test('1.19.2 shared province borders render without undefined canvas references',()=>{
+  // Regression: referencing provinceBorderCanvas, which was never initialized,
+  // throws from draw() and prevents both the map and troop counts from appearing.
+  assert.doesNotMatch(js,/\bprovinceBorderCanvas\b/);
+  assert.match(js,/if\(borderImage\)ctx\.drawImage\(borderImage,0,0\)/);
+  assert.match(js,/drawSpyBalloons\(\);drawTroops\(\)/);
+});
+
+test('1.19.3 nation picker displays nine real country names even before the label cache is populated',()=>{
+  const vm=requireVm();
+  const map=JSON.parse(readFileSync(new URL('../shared/map.json',import.meta.url),'utf8'));
+  const markup=js.match(/function renderNationChoices\(\)\{[\s\S]*?\n\}\nfunction renderDiplomacy/);
+  assert(markup,'nation-choice renderer must be extractable');
+  const buttons=[];
+  const context={
+    map,game:{occupied:[]},assigned:null,isPublicMatch:false,lastChoiceKey:'',nationNames:{},
+    $:()=>({replaceChildren(){buttons.length=0;},append(button){buttons.push(button);}}),
+    createButton:(text)=>({textContent:text,disabled:false,prepend(){}}),
+    socket:{emit(){}},nationFlag:()=>({})
+  };
+  vm.createContext(context);
+  vm.runInContext(markup[0].replace(/\nfunction renderDiplomacy$/,''),context);
+  vm.runInContext('renderNationChoices()',context);
+  assert.equal(buttons.length,10,'nine nations plus random option');
+  for(const code of map.playableNations){
+    assert(buttons.some(b=>b.textContent===map.nations[code].name),`${code} must show actual name`);
+  }
+  assert(buttons.every(b=>!b.textContent.includes('undefined')));
+  map.nations.PT.name='Portugal Updated';
+  vm.runInContext('renderNationChoices()',context);
+  assert(buttons.some(b=>b.textContent==='Portugal Updated'),'name changes must invalidate the cache');
+});
+
+function requireVm(){return vmModule;}

@@ -1,3 +1,27 @@
+# WW2 Royale — Version 1.19.3 (Nation Selection Hotfix)
+
+Corrects the country selection bug where playable nations were labelled `undefined` when the menu appeared before the country-name cache was populated. The picker now uses the authoritative nation names in `shared/map.json`, includes those names in its render cache key, and initializes nation names before loading optional seasonal artwork. All nine playable nations have proper labels, including Portugal.
+
+This is a client-focused hotfix. All 114 provinces, movement, diplomacy, economy, logo assets, music and the 6-of-9 public matchmaking behavior are unchanged.
+
+To update ww2royale.com, extract this ZIP and upload its contents to the root of your existing GitHub repository (the folder containing `package.json`). Commit, deploy latest commit in Render, then hard-refresh the website.
+
+Note: Deploying restarts the in-memory game rooms; active matches will be reset.
+
+---
+
+# WW2 Royale — Version 1.19.2 hotfix
+
+**Critical fix:** Version 1.19.1 referenced a removed browser variable while drawing borders. This produced a JavaScript `ReferenceError` during every map render, preventing the province outlines and troops from appearing.
+
+**Fix:** Map rendering now uses the existing shared `client/assets/province-lines.png` border layer directly, followed by the country-owner outlines, labels, movements, and troop icons. This preserves all 1.19.1 branding, gameplay, the nine-nation roster, and multiplayer features.
+
+Browser assets `main.js` and `style.css` are versioned in `index.html` to avoid stale scripts after Render deployment. The new regression test catches this exact failure. The optional browser smoke test `python tools/offline_browser_116.py` verifies map rendering on desktop and iPhone-sized viewports and reports JavaScript errors.
+
+**Deploy:** Upload the ZIP contents to the root of the existing GitHub repository (where `package.json` lives). Commit and deploy the latest commit through Render. Visit https://ww2royale.com and hard-refresh (`Ctrl+Shift+R`). Existing in-memory game rooms reset when the server redeploys.
+
+---
+
 ## Version 1.19.1 — Official logo integration
 
 - Added the supplied transparent WW2 Royale emblem to the **home screen**, replacing the placeholder star with a prominent full-size logo.
