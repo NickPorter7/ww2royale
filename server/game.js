@@ -1,29 +1,46 @@
-/* WW2 Royale 1.5 — independent authoritative game rules. */
-export const UNIT={infantry:{hp:20,min:10,max:12,role:'land'},tank:{hp:100,min:20,max:30,role:'land'},bomber:{hp:50,min:35,max:40,role:'air'}};
+/* WW2 Royale 1.21 — authoritative rules and balanced pacing. */
+import {SHIP,SHIP_KEYS,fleetEmpty,buyShips,orderFleet,tickNavy} from './naval.js';
+import {campaignDayAt,winterSeverityAt,winterUnitHopMs} from './weather.js';
+export {campaignDayAt,winterSeverityAt} from './weather.js';
+import {NATION_TRAITS,nationModifier,discountedPrice} from './traits.js';
+import {publishWarEvent,recordBattle,battleReportsFor} from './war-events.js';
+export {NATION_TRAITS};
+export {SHIP};
+export const UNIT={infantry:{hp:24,min:7,max:9,role:'land'},tank:{hp:95,min:18,max:25,role:'land'},bomber:{hp:42,min:30,max:38,role:'air'}};
 // Construction unlocks purchases; only banks generate passive income.
-export const BUILD={barracks:{cost:20,max:1},workshop:{cost:90,max:1},airport:{cost:175,max:2},bank:{cost:50,max:3},defense:{cost:200,max:1}};
-export const UNIT_COST={infantry:15,tank:75,bomber:150,balloon:200};
-export const SPY_RADIUS=2; // number of province borders visible around a stationed balloon
+export const BUILD={barracks:{cost:25,max:1},workshop:{cost:65,max:1},airport:{cost:125,max:2},bank:{cost:60,max:3},defense:{cost:150,max:1},port:{cost:105,max:1},capital:{cost:245,max:1}};
+export const UNIT_COST={infantry:12,tank:55,bomber:110,balloon:180};
+export const SPY_RADIUS=1; // stationed balloon + directly bordering provinces only
+export const BALLOON_HOP_MS=8500; // reconnaissance balloon travel time per province; no instant teleporting
 
-export const START_MONEY=100, HOP_MS=5000, MAX_UNITS=100000;
-export const MOVE_MS={infantry:15000,tank:30000,bomber:10500};
+export const START_MONEY=175, HOP_MS=5000, MAX_UNITS=100000;
+export const BANK_PER_SECOND=.18, PUBLIC_MATCH_MS=60*60*1000;
+export const MOVE_MS={infantry:15000,tank:20000,bomber:8500};
 const unitKeys=Object.keys(UNIT),buildingKeys=Object.keys(BUILD);
 const pair=(a,b)=>[a,b].sort().join(':');
 const roundMoney=n=>Math.round(n*100)/100;
 const troops=()=>({infantry:0,tank:0,bomber:0});
-const buildings=()=>({barracks:1,workshop:0,airport:0,bank:1,defense:0});
+const fullHealth=units=>Object.fromEntries(unitKeys.map(k=>[k,(units?.[k]||0)*UNIT[k].hp]));
+const buildings=()=>({barracks:1,workshop:0,airport:0,bank:1,defense:0,port:0,capital:0});
 const sumTroops=(stack)=>unitKeys.reduce((n,k)=>n+(stack?.[k]||0),0);
 function hasAny(v){return unitKeys.some(k=>(v?.[k]||0)>0);}
 export function createGame(map,now=Date.now(),options={}){
   const nations=Object.keys(map.nations);
   return {map,provinceDefinitions:new Map(map.provinces.map(p=>[p.id,p])),
-    provinces:map.provinces.map(p=>({id:p.id,owner:p.nation,units:{...troops(),infantry:p.troops},garrison:{},buildings:buildings(),defenseReady:true})),
+    provinces:map.provinces.map(p=>({id:p.id,owner:p.nation,units:{...troops(),infantry:p.troops},healthByType:fullHealth({...troops(),infantry:p.troops}),fleet:fleetEmpty(),garrison:{},buildings:{...buildings(),capital:p.capital?1:0},defenseReady:true})),
     money:Object.fromEntries(nations.map(n=>[n,START_MONEY])),
-    diplomacy:{},requests:[],peaceRequests:[],movements:[],spyBalloons:[],nextBalloon:1,chat:[],log:['The struggle for Europe has begun.'],winner:null,
-    lastTick:now,campaignStartAt:now,nextOrder:1,hopMs:options.hopMs||HOP_MS,random:options.random||Math.random,events:[]};
+    moneyRemainder:Object.fromEntries(nations.map(n=>[n,0])),
+    capitals:Object.fromEntries(nations.map(n=>[n,map.provinces.find(p=>p.nation===n&&p.capital)?.id||map.provinces.find(p=>p.nation===n)?.id||null])),
+    timeLimitMs:0,
+    diplomacy:{},requests:[],peaceRequests:[],movements:[],navalMovements:[],spyBalloons:[],nextBalloon:1,chat:[],log:['The struggle for Europe has begun.'],winner:null,
+    lastTick:now,campaignStartAt:now,nextOrder:1,hopMs:options.hopMs||HOP_MS,random:options.random||Math.random,events:[],
+    warEvents:[],battleReports:[],nextWarEventId:1,nextBattleReportId:1};
 }
 export function relation(g,a,b){return a===b?'self':g.diplomacy[pair(a,b)]||'neutral';}
 export function ally(g,nation){return Object.keys(g.map.nations).find(n=>n!==nation&&relation(g,nation,n)==='ally')||null;}
+export function capitalControlled(g,nation){const id=g.capitals?.[nation];return !!(id&&g.provinces[id-1]?.owner===nation);}
+export function commissionShip(g,nation,province,type,amount){return buyShips(g,nation,province,type,amount);}
+export function sailFleet(g,nation,data,now=Date.now()){return orderFleet(g,nation,data,now,changeDiplomacy);}
 function writeLog(g,m){g.log.unshift(m);g.log.length=Math.min(g.log.length,16);}
 function invalidatePassages(g){for(const order of g.movements){if(!routeValid(g,order))order.invalid=true;}}
 function evictGarrisons(g,a,b){
@@ -44,10 +61,12 @@ export function changeDiplomacy(g,nation,target,action){
     if(status==='war')throw Error('Already at war.');
     if(status==='ally')evictGarrisons(g,nation,target);
     delete g.diplomacy[key];removePair();g.diplomacy[key]='war';writeLog(g,`${nation} declared war on ${target}.`);
+    publishWarEvent(g,'declareWar',{actor:nation,target});
   }else if(action==='breakAlliance'){
     if(status!=='ally')throw Error('These nations are not allied.');
     evictGarrisons(g,nation,target);delete g.diplomacy[key];removePair();
     writeLog(g,`${nation} ended its alliance with ${target}.`);
+    publishWarEvent(g,'allianceBroken',{actor:nation,target});
   }else if(action==='requestAlly'){
     if(status!=='neutral'||ally(g,nation)||ally(g,target)||request('ally').some(x=>pair(x.from,x.to)===key))throw Error('Alliance unavailable: only neutral nations with free alliance slots may request.');
     g.requests.push({from:nation,to:target});
@@ -56,19 +75,25 @@ export function changeDiplomacy(g,nation,target,action){
     if(action==='acceptAlly'){
       if(status!=='neutral'||ally(g,nation)||ally(g,target))throw Error('Alliance slot unavailable.');
       g.diplomacy[key]='ally';writeLog(g,`${nation} and ${target} formed an alliance.`);
+      publishWarEvent(g,'alliance',{actor:nation,target});
     }removePair();
   }else if(action==='requestPeace'){
     if(status!=='war'||request('peace').some(x=>pair(x.from,x.to)===key))throw Error('Peace request unavailable.');
     g.peaceRequests.push({from:nation,to:target});
   }else if(action==='acceptPeace'||action==='declinePeace'){
     if(!request('peace').some(r=>r.from===target&&r.to===nation))throw Error('No incoming peace request.');
-    if(action==='acceptPeace'){delete g.diplomacy[key];writeLog(g,`${nation} and ${target} signed peace.`);}removePair();
+    if(action==='acceptPeace'){delete g.diplomacy[key];writeLog(g,`${nation} and ${target} signed peace.`);
+      publishWarEvent(g,'peace',{actor:nation,target});}removePair();
   }else throw Error('Unknown diplomacy action.');
   invalidatePassages(g);checkVictory(g);return true;
 }
 // Movement is measured in province-border crossings. Every unit in a mixed
 // army moves at the speed of its slowest unit (tanks > infantry > bombers).
-function travelHop(g,stack){return Math.max(...unitKeys.filter(t=>stack[t]>0).map(t=>MOVE_MS[t]))*g.hopMs/HOP_MS;}
+function travelHop(g,stack,nation=null,now=Date.now()){
+  const severity=winterSeverityAt(g,now);
+  const base=Math.max(...unitKeys.filter(t=>stack[t]>0).map(t=>winterUnitHopMs(t,MOVE_MS[t],severity)))*g.hopMs/HOP_MS;
+  return Math.round(base*(stack.tank>0?nationModifier(nation,'tankSpeed'):1));
+}
 function airOnly(stack){return stack.bomber>0&&!stack.infantry&&!stack.tank;}
 export function findRoute(g,nation,from,to,type='infantry'){
   if(from===to||!g.provinces[from-1]||!g.provinces[to-1])return null;
@@ -129,7 +154,7 @@ export function orderMovement(g,nation,data,now=Date.now()){
   if(rel==='neutral'&&!(data.kind==='attack'&&data.autoDeclareWar===true))throw Error('Declare war first, or explicitly confirm an attack that automatically declares war.');
   const attacking=rel==='war'||(rel==='neutral'&&data.autoDeclareWar===true);
   if(data.kind!==(attacking?'attack':'move'))throw Error(attacking?'Use Attack to confirm a hostile order.':'Use Move to confirm a friendly order.');
-  const hop=travelHop(g,units);
+  const hop=travelHop(g,units,nation,now);
   // Validate the route under the prospective war relationship BEFORE making
   // a diplomatic change. Failed orders must never declare war.
   let path;
@@ -141,12 +166,50 @@ export function orderMovement(g,nation,data,now=Date.now()){
   }else path=findRoute(g,nation,from,to,airOnly(units));
   if(!path)throw Error('No valid route through owned or allied territory.');
   if(rel==='neutral')changeDiplomacy(g,nation,dest.owner,'declareWar');
-  for(const t of unitKeys)stack[t]-=units[t];
+  const committedHealth={};
+  for(const t of unitKeys){
+    const maxTake=units[t]*UNIT[t].hp;
+    if(!fromGarrison){
+      const actual=src.healthByType?.[t]??(stack[t]*UNIT[t].hp);
+      const retained=(stack[t]-units[t])*UNIT[t].hp;
+      committedHealth[t]=Math.min(maxTake,Math.max(0,actual-retained));
+      src.healthByType[t]=Math.max(0,actual-committedHealth[t]);
+    }else committedHealth[t]=maxTake;
+    stack[t]-=units[t];
+  }
   if(fromGarrison&&!hasAny(stack))delete src.garrison[nation];
-  const o={id:g.nextOrder++,nation,from,to,units:{...units},healthByType:Object.fromEntries(unitKeys.map(t=>[t,units[t]*UNIT[t].hp])),
+  const o={id:g.nextOrder++,nation,from,to,units:{...units},healthByType:committedHealth,
     fromGarrison,hopMs:hop,attacking,returning:false,recalling:false};
   setItinerary(g,o,path.map(id=>node(g,id)),Array(path.length-1).fill(hop),now);
-  syncLegacy(o);g.movements.push(o);g.events.push({kind:'order',order:o.id,nation});return o;
+  syncLegacy(o);g.movements.push(o);g.events.push({kind:'order',order:o.id,nation});
+  if(g.events.length>300)g.events.splice(0,g.events.length-300);return o;
+}
+// A coordinated order is validated on a disposable copy before it changes real
+// troops, diplomacy, or routes. Every source army is committed atomically.
+export function orderMultiple(g,nation,data,now=Date.now()){
+  const commands=data?.orders;
+  if(!Array.isArray(commands)||commands.length<2||commands.length>9)throw Error('Choose 2–9 source armies.');
+  if(new Set(commands.map(c=>c?.from)).size!==commands.length)throw Error('Each source province may be selected once.');
+  if(commands.some(c=>c?.to!==commands[0].to))throw Error('Group armies must share one destination.');
+  if(!['together','separate'].includes(data.arrivalMode))throw Error('Choose how the armies should arrive.');
+  // A pilot copy contains all state that an order can modify; no production
+  // state or player balances are changed in a failed coordinated order.
+  const trial={...g,provinces:structuredClone(g.provinces),diplomacy:{...g.diplomacy},
+    requests:structuredClone(g.requests),peaceRequests:structuredClone(g.peaceRequests),
+    movements:structuredClone(g.movements),events:[],warEvents:structuredClone(g.warEvents),battleReports:structuredClone(g.battleReports),
+    log:[...g.log],winner:g.winner};
+  for(const command of commands)orderMovement(trial,nation,command,now);
+  const result=commands.map(command=>orderMovement(g,nation,command,now));
+  if(data.arrivalMode==='together'){
+    const targetTime=Math.max(...result.map(o=>o.arrivalAt));
+    for(const o of result){
+      const wait=targetTime-o.arrivalAt;
+      o.startedAt+=wait;o.arrivalAt+=wait;
+      // startAt in the future reserves the troops now, but they remain visibly
+      // at their departure point until their scheduled departure time.
+    }
+  }
+  return result;
 }
 // Progress along an actual set of timed legs, including the fractional first
 // segment after a recall/redirect. A rerouted army never teleports to a node.
@@ -168,7 +231,7 @@ function routeValid(g,o){
   // Validate all upcoming transit stops, rather than the original source.
   return o.waypoints.slice(1,-1).every(p=>!p.id||['self','ally'].includes(relation(g,o.nation,g.provinces[p.id-1].owner)));
 }
-function itineraryFromCurrent(g,o,now,destination,forcedBack=false){
+function itineraryFromCurrent(g,o,now,destination,forcedBack=false,newHop=o.hopMs){
   const state=position(g,o,now),a=o.waypoints[state.i],b=o.waypoints[state.i+1];
   const current={id:null,x:state.x,y:state.y};
   const options=[];
@@ -180,7 +243,7 @@ function itineraryFromCurrent(g,o,now,destination,forcedBack=false){
     // travel from that point onward uses normal unit movement speed.
     const first=Math.max(0,Math.round(o.durations[state.i]*fraction));
     const waypoints=[current,node(g,nodePoint.id),...path.slice(1).map(id=>node(g,id))];
-    const durations=[first,...Array(path.length-1).fill(o.hopMs)];
+    const durations=[first,...Array(path.length-1).fill(newHop)];
     options.push({waypoints,durations,total:durations.reduce((s,n)=>s+n,0)});
   }
   if(!options.length)throw Error(forcedBack?'No route back to your starting province.':'No valid route from this army’s current location.');
@@ -200,11 +263,14 @@ export function changeMovement(g,nation,{id,action,to,kind},now=Date.now()){
     if(rel==='neutral')throw Error('Declare war before attacking that nation.');
     if(kind!==(rel==='war'?'attack':'move'))throw Error('Choose Move or Attack for the destination.');
   }
-  const itinerary=itineraryFromCurrent(g,o,now,destination,action==='recall');
+  const newHop=travelHop(g,o.units,nation,now);
+  const itinerary=itineraryFromCurrent(g,o,now,destination,action==='recall',newHop);
+  o.hopMs=newHop;
   o.to=destination;o.attacking=action==='redirect'&&rel==='war';
   o.recalling=action==='recall';o.returning=action==='recall';
   setItinerary(g,o,itinerary.waypoints,itinerary.durations,now);
-  g.events.push({kind:'changeOrder',order:o.id,nation,action});return o;
+  g.events.push({kind:'changeOrder',order:o.id,nation,action});
+  if(g.events.length>300)g.events.splice(0,g.events.length-300);return o;
 }
 // Units retain partial damage across rounds during a battle; the pool is converted
 // back into whole unit counts only after the battle resolves.
@@ -230,47 +296,62 @@ function damageRoll(g,units,targets,modifier=1){
   }
   return total*modifier;
 }
-function volley(g,attacker,defender,modifier=1){
+function volley(g,attacker,defender,modifier=1,attackingNation=null){
   const dLand=(defender.infantry||0)+(defender.tank||0)>0;
   const dAir=(defender.bomber||0)>0;
   // Land forces can only hit land. Tanks and bombers can instead hit air.
-  if(dLand)applyPoolDamage(defender,damageRoll(g,attacker,['infantry','tank','bomber'],modifier),['infantry','tank']);
+  const infantryDamage=(attacker.infantry||0)*(UNIT.infantry.min+UNIT.infantry.max)/2*
+    (nationModifier(attackingNation,'infantryDamage')-1)*modifier;
+  if(dLand)applyPoolDamage(defender,damageRoll(g,attacker,['infantry','tank','bomber'],modifier)+infantryDamage,['infantry','tank']);
   else if(dAir)applyPoolDamage(defender,damageRoll(g,attacker,['tank','bomber'],modifier),['bomber']);
 }
 function fight(g,order,target){
-  const attack={...order.healthByType};
-  const defend=createPool(target.units);
+  const attackMultiplier=capitalControlled(g,order.nation)?1:.8;
+  const defenseMultiplier=(capitalControlled(g,target.owner)?1:.8)*nationModifier(target.owner,'defenseHealth');
+  const defenderNation=target.owner;
+  const initialAttack={...order.units},initialDefense={...target.units};
+  const attack=Object.fromEntries(unitKeys.map(t=>[t,order.healthByType[t]*attackMultiplier]));
+  const defend=Object.fromEntries(unitKeys.map(t=>[t,(target.healthByType?.[t]??target.units[t]*UNIT[t].hp)*defenseMultiplier]));
   const supportOwners=Object.entries(target.garrison||{}).filter(([n])=>relation(g,n,target.owner)==='ally');
   const supportStacks={};for(const [n,u] of supportOwners)supportStacks[n]=createPool(u,.8);
   const merged=()=>{const result=createPool(troops());for(const pool of Object.values(supportStacks))
     for(const t of unitKeys)result[t]+=pool[t];return result;};
   for(let round=0;round<50;round++){
-    const attUnits=poolUnits(attack),defUnits=poolUnits(defend),alliedUnits=poolUnits(merged(),.8);
+    const attUnits=poolUnits(attack,attackMultiplier),defUnits=poolUnits(defend,defenseMultiplier),alliedUnits=poolUnits(merged(),.8);
     if(!hasAny(attUnits)||(!hasAny(defUnits)&&!hasAny(alliedUnits)))break;
     const before=JSON.stringify([attack,defend,supportStacks]);
-    volley(g,attUnits,defend);
+    volley(g,attUnits,defend,attackMultiplier,order.nation);
     if(!hasAny(poolUnits(defend)))for(const pool of Object.values(supportStacks)){
       if(!hasAny(poolUnits(pool,.8)))continue;
-      volley(g,attUnits,pool);if(hasAny(poolUnits(pool,.8)))break;
+      volley(g,attUnits,pool,1,order.nation);if(hasAny(poolUnits(pool,.8)))break;
     }
-    volley(g,defUnits,attack);
-    for(const pool of Object.values(supportStacks))volley(g,poolUnits(pool,.8),attack,.8);
+    volley(g,defUnits,attack,defenseMultiplier,defenderNation);
+    for(const [supportNation,pool] of Object.entries(supportStacks))volley(g,poolUnits(pool,.8),attack,.8,supportNation);
     if(before===JSON.stringify([attack,defend,supportStacks]))break;
   }
-  target.units=poolUnits(defend);
+  target.units=poolUnits(defend,defenseMultiplier);
+  target.healthByType=Object.fromEntries(unitKeys.map(t=>[t,defend[t]/defenseMultiplier]));
   for(const [owner,pool] of Object.entries(supportStacks)){
     target.garrison[owner]=poolUnits(pool,.8);
     if(!hasAny(target.garrison[owner]))delete target.garrison[owner];
   }
-  order.healthByType={...attack};updateFromHealth(order);
+  order.healthByType=Object.fromEntries(unitKeys.map(t=>[t,attack[t]/attackMultiplier]));updateFromHealth(order);
   const won=(order.units.infantry+order.units.tank>0)&&!hasAny(target.units)&&supportOwners.every(([n])=>!target.garrison[n]);
+  // Capture transfers surviving land units into the province, but those units
+  // must still count as SURVIVORS in the after-action casualty report.
+  const attackingSurvivors={...order.units};
   if(won){
     const old=target.owner;target.owner=order.nation;
     target.units={...troops(),infantry:order.units.infantry,tank:order.units.tank};
-    target.garrison={};target.defenseReady=true;
+    target.healthByType={...troops(),infantry:order.healthByType.infantry,tank:order.healthByType.tank};
+    target.garrison={};target.fleet=fleetEmpty();target.defenseReady=true;
     order.units.infantry=0;order.units.tank=0;order.healthByType.infantry=0;order.healthByType.tank=0;
     writeLog(g,`${order.nation} captured ${g.provinceDefinitions.get(order.to).name} from ${old}.`);
+    if(g.capitals[old]===order.to)publishWarEvent(g,'capitalFall',{actor:order.nation,target:old,province:order.to});
   }else writeLog(g,`${order.nation} attacked ${g.provinceDefinitions.get(order.to).name}.`);
+  recordBattle(g,{kind:'land',attacker:order.nation,defender:defenderNation,province:order.to,
+    attackerBefore:initialAttack,attackerAfter:attackingSurvivors,defenderBefore:initialDefense,
+    defenderAfter:target.owner===defenderNation?target.units:{},won});
   syncLegacy(order);return won;
 }
 function returnOrder(g,o){
@@ -284,13 +365,14 @@ function returnOrder(g,o){
     }
     p=g.provinces.find(x=>x.owner===o.nation);
   }
-  if(p)for(const t of unitKeys)p.units[t]=Math.min(MAX_UNITS,p.units[t]+o.units[t]);
+  if(p)for(const t of unitKeys){p.units[t]=Math.min(MAX_UNITS,p.units[t]+o.units[t]);
+    p.healthByType[t]=(p.healthByType?.[t]||0)+(o.healthByType?.[t]||o.units[t]*UNIT[t].hp);}
   writeLog(g,`${o.nation} troops returned to their base.`);
 }
 function bomberReturn(g,o,now){
   if(o.units.bomber<=0)return null;
   const returned={...o,units:{...troops(),bomber:o.units.bomber},healthByType:{...troops(),bomber:o.healthByType.bomber},
-    id:g.nextOrder++,from:o.to,to:o.from,attacking:false,returning:true,recalling:false,hopMs:travelHop(g,{...troops(),bomber:1})};
+    id:g.nextOrder++,from:o.to,to:o.from,attacking:false,returning:true,recalling:false,hopMs:travelHop(g,{...troops(),bomber:1},o.nation,now)};
   // Bombers return to their actual original base at their normal 7s/hop speed.
   const route=findRoute(g,o.nation,returned.from,returned.to,'bomber')||[...o.path].reverse();
   setItinerary(g,returned,route.map(id=>node(g,id)),Array(route.length-1).fill(returned.hopMs),now);
@@ -304,7 +386,8 @@ function resolveArrival(g,o,now){
     const comeback=bomberReturn(g,o,now);
     checkVictory(g);return comeback;
   }
-  if(status==='self')for(const t of unitKeys)target.units[t]=Math.min(MAX_UNITS,target.units[t]+o.units[t]);
+  if(status==='self')for(const t of unitKeys){target.units[t]=Math.min(MAX_UNITS,target.units[t]+o.units[t]);
+    target.healthByType[t]=(target.healthByType?.[t]||0)+(o.healthByType?.[t]||o.units[t]*UNIT[t].hp);}
   else if(status==='ally'){
     const stack=target.garrison[o.nation]||troops();
     for(const t of unitKeys)stack[t]=Math.min(MAX_UNITS,stack[t]+o.units[t]);
@@ -323,11 +406,18 @@ function defensePrestrike(g,o){
 export function build(g,nation,provinceId,kind,now=Date.now()){
   const p=g.provinces[provinceId-1],b=BUILD[kind];
   if(g.winner||!p||p.owner!==nation||!b)throw Error('Cannot construct in that province.');
-  if(p.buildings[kind]>=b.max)throw Error(`Maximum ${b.max} ${kind} level(s) in this province.`);
-  if(g.money[nation]<b.cost)throw Error('Insufficient funds.');
-  g.money[nation]=roundMoney(g.money[nation]-b.cost);
-  p.buildings[kind]++;
-  writeLog(g,`${nation} upgraded ${kind} in ${g.provinceDefinitions.get(provinceId).name} to level ${p.buildings[kind]}.`);
+  if(kind==='port'&&!g.provinceDefinitions.get(provinceId)?.coastal)throw Error('Ports can only be built in coastal provinces.');
+  if(kind==='capital'&&g.capitals[nation]===provinceId&&capitalControlled(g,nation))throw Error('This province is already your capital.');
+  if(kind!=='capital'&&p.buildings[kind]>=b.max)throw Error(`Maximum ${b.max} ${kind} level(s) in this province.`);
+  const cost=discountedPrice(b.cost,nation,kind==='port'?'portCost':'');
+  if(g.money[nation]<cost)throw Error('Insufficient funds.');
+  g.money[nation]=roundMoney(g.money[nation]-cost);
+  if(kind==='capital'){
+    const old=g.capitals[nation];if(old&&g.provinces[old-1])g.provinces[old-1].buildings.capital=0;
+    g.capitals[nation]=provinceId;p.buildings.capital=1;
+    writeLog(g,`${nation} established its new capital at ${g.provinceDefinitions.get(provinceId).name}.`);
+    publishWarEvent(g,'newCapital',{actor:nation,province:provinceId});
+  }else{p.buildings[kind]++;writeLog(g,`${nation} upgraded ${kind} in ${g.provinceDefinitions.get(provinceId).name} to level ${p.buildings[kind]}.`);}
   return p;
 }
 export function buyUnit(g,nation,provinceId,type,amount=1){
@@ -340,20 +430,98 @@ export function buyUnit(g,nation,provinceId,type,amount=1){
   if(type==='balloon'&&p.buildings.airport<1)throw Error('Build a level 1 airport first.');
   if(type==='balloon'&&(amount>5||g.spyBalloons.filter(b=>b.nation===nation).length+amount>20))throw Error('Maximum 20 balloons per nation; purchase up to 5 at a time.');
   if(type!=='balloon'&&p.units[type]+amount>MAX_UNITS)throw Error('Province unit limit reached.');
-  const total=UNIT_COST[type]*amount;
+  const unitPrice=discountedPrice(UNIT_COST[type],nation,type==='infantry'?'infantryCost':type==='tank'?'tankCost':'');
+  const total=roundMoney(unitPrice*amount);
   if(g.money[nation]<total)throw Error(`Insufficient funds. Need $${total}.`);
   g.money[nation]=roundMoney(g.money[nation]-total);
   if(type==='balloon')for(let i=0;i<amount;i++)g.spyBalloons.push({id:g.nextBalloon++,nation,province:provinceId});
-  else p.units[type]+=amount;
+  else{p.units[type]+=amount;p.healthByType[type]=(p.healthByType[type]||0)+UNIT[type].hp*amount;}
   writeLog(g,`${nation} purchased ${amount} ${type}${amount===1?'':'s'} in ${g.provinceDefinitions.get(provinceId).name}.`);
   return {province:provinceId,type,amount,total};
 }
-export function stationBalloon(g,nation,id,provinceId){
+// Reconnaissance balloons use server-authoritative travel orders and cannot
+// reveal their destination until reaching it. Routes cross any adjacent map
+// provinces without declaring war. This uses the same map graph as armies.
+function balloonRoute(g,from,to){
+  if(from===to)return null;
+  const queue=[from], previous=new Map([[from,null]]);
+  for(let i=0;i<queue.length;i++){
+    const p=queue[i];
+    for(const neighbor of g.provinceDefinitions.get(p)?.neighbors||[]){
+      if(previous.has(neighbor))continue;
+      previous.set(neighbor,p);
+      if(neighbor===to){
+        const path=[to];let current=p;
+        while(current!==null){path.push(current);current=previous.get(current);}
+        return path.reverse();
+      }
+      queue.push(neighbor);
+    }
+  }
+  return null;
+}
+function balloonFlightPosition(g,balloon,now){
+  const move=balloon.movement;
+  const current=g.provinceDefinitions.get(balloon.province);
+  if(!move)return current?{x:current.x,y:current.y}:null;
+  const elapsed=Math.max(0,now-move.startedAt),fraction=elapsed/Math.max(1,move.stepMs);
+  const leg=Math.min(move.path.length-2,Math.max(0,Math.floor(fraction)));
+  const from=g.provinceDefinitions.get(move.path[leg]),to=g.provinceDefinitions.get(move.path[leg+1]);
+  if(!from||!to)return current?{x:current.x,y:current.y}:null;
+  const begin=leg===0&&move.visualStart?move.visualStart:from;
+  const t=Math.max(0,Math.min(1,fraction-leg));
+  return {x:begin.x+(to.x-begin.x)*t,y:begin.y+(to.y-begin.y)*t};
+}
+export function stationBalloon(g,nation,id,provinceId,now=Date.now()){
   const balloon=g.spyBalloons.find(b=>b.id===id&&b.nation===nation);
-  if(!balloon||!g.provinces[provinceId-1]||g.winner)throw Error('Invalid spy balloon assignment.');
-  balloon.province=provinceId;
-  writeLog(g,`${nation} stationed a reconnaissance balloon over ${g.provinceDefinitions.get(provinceId).name}.`);
+  if(!balloon||!Number.isSafeInteger(provinceId)||!g.provinces[provinceId-1]||g.winner)
+    throw Error('Invalid spy balloon assignment.');
+  if(!Number.isFinite(now))throw Error('Invalid movement time.');
+  if(balloon.province===provinceId)throw Error('Choose a different destination for this balloon.');
+  const path=balloonRoute(g,balloon.province,provinceId);
+  if(!path||path.length<2)throw Error('No valid reconnaissance flight route.');
+  // On a redirect, the new route departs from the last actually reached province.
+  const origin=balloon.movement?.origin??balloon.province;
+  const visualStart=balloon.movement?balloonFlightPosition(g,balloon,now):null;
+  balloon.movement={from:balloon.province,to:provinceId,origin,path,visualStart,
+    startedAt:now,arrivalAt:now+(path.length-1)*BALLOON_HOP_MS,stepMs:BALLOON_HOP_MS};
+  writeLog(g,`${nation} launched reconnaissance balloon #${id} toward ${g.provinceDefinitions.get(provinceId).name}.`);
   return balloon;
+}
+export function recallBalloon(g,nation,id,now=Date.now()){
+  const balloon=g.spyBalloons.find(b=>b.id===id&&b.nation===nation);
+  if(!balloon?.movement||g.winner)throw Error('No moving spy balloon to recall.');
+  const origin=balloon.movement.origin;
+  const visualStart=balloonFlightPosition(g,balloon,now);
+  if(origin===balloon.province){
+    // The balloon has not crossed a border yet. It still needs a timed return
+    // from its in-flight position; the client draws its return leg accordingly.
+    const position=Math.max(0,Math.min(1,(now-balloon.movement.startedAt)/balloon.movement.stepMs));
+    balloon.movement={from:balloon.province,to:origin,origin,path:[balloon.province,origin],
+      visualStart,startedAt:now,arrivalAt:now+Math.max(1000,Math.round(position*BALLOON_HOP_MS)),
+      stepMs:Math.max(1000,Math.round(position*BALLOON_HOP_MS)),returning:true};
+    return balloon;
+  }
+  const path=balloonRoute(g,balloon.province,origin);
+  if(!path)throw Error('No return route for spy balloon.');
+  balloon.movement={from:balloon.province,to:origin,origin,path,visualStart,
+    startedAt:now,arrivalAt:now+(path.length-1)*BALLOON_HOP_MS,stepMs:BALLOON_HOP_MS,returning:true};
+  return balloon;
+}
+function tickBalloons(g,now){
+  let changed=false;
+  for(const balloon of g.spyBalloons){
+    const move=balloon.movement;
+    if(!move)continue;
+    const elapsed=Math.max(0,now-move.startedAt);
+    const step=Math.min(move.path.length-1,Math.floor(elapsed/move.stepMs));
+    const reached=move.path[step];
+    if(reached!==balloon.province){balloon.province=reached;changed=true;}
+    if(now>=move.arrivalAt){
+      balloon.province=move.to;balloon.movement=null;changed=true;
+    }
+  }
+  return changed;
 }
 function reconnaissanceZone(g,from,radius=SPY_RADIUS){
   const visited=new Set([from]),queue=[[from,0]];
@@ -373,13 +541,14 @@ export function sendChat(g,nation,content,now=Date.now()){
   g.chat.push({id:g.chat.length?g.chat[g.chat.length-1].id+1:1,nation,to,text:body,at:now});
   if(g.chat.length>60)g.chat.shift();return true;
 }
-export function attackPower(p){return unitKeys.reduce((s,k)=>s+(p.units[k]||0)*(UNIT[k].min+UNIT[k].max)/2,0);}
+export function attackPower(p){return unitKeys.reduce((s,k)=>s+(p.units[k]||0)*(UNIT[k].min+UNIT[k].max)/2,0)+SHIP_KEYS.reduce((s,k)=>s+(p.fleet[k]||0)*SHIP[k].damage,0);}
 export function rankings(g){
   const nations=Object.keys(g.map.nations);
   const data=nations.map(n=>({nation:n,provinces:g.provinces.filter(p=>p.owner===n).length,
     money:g.money[n],attack:g.provinces.filter(p=>p.owner===n).reduce((s,p)=>s+attackPower(p),0)+
       g.provinces.reduce((s,p)=>s+unitKeys.reduce((sub,t)=>sub+(p.garrison[n]?.[t]||0)*(UNIT[t].min+UNIT[t].max)/2,0),0)+
-      g.movements.filter(o=>o.nation===n).reduce((s,o)=>s+unitKeys.reduce((v,t)=>v+(o.units[t]||0)*(UNIT[t].min+UNIT[t].max)/2,0),0)}));
+      g.movements.filter(o=>o.nation===n).reduce((s,o)=>s+unitKeys.reduce((v,t)=>v+(o.units[t]||0)*(UNIT[t].min+UNIT[t].max)/2,0),0)+
+      g.navalMovements.filter(o=>o.nation===n).reduce((s,o)=>s+SHIP_KEYS.reduce((v,t)=>v+(o.ships[t]||0)*SHIP[t].damage,0),0)}));
   const sums={provinces:data.reduce((s,x)=>s+x.provinces,0),money:data.reduce((s,x)=>s+x.money,0),attack:data.reduce((s,x)=>s+x.attack,0)};
   for(const r of data){r.score=100*(.5*r.provinces/Math.max(1,sums.provinces)+.25*r.money/Math.max(1,sums.money)+.25*r.attack/Math.max(1,sums.attack));}
   return data.sort((a,b)=>b.score-a.score||b.provinces-a.provinces).map((r,i)=>({...r,place:i+1}));
@@ -394,16 +563,29 @@ export function checkVictory(g){
       g.winner={nations:[nation,friend],mode:'alliance'};break;}}
     else if(byNation[nation]>=Math.ceil(threshold*.51)){g.winner={nations:[nation],mode:'solo'};break;}
   }
-  if(g.winner){g.movements=[];writeLog(g,`Victory: ${g.winner.nations.join(' + ')} (${g.winner.mode}).`);}
+  if(g.winner){g.movements=[];g.navalMovements=[];writeLog(g,`Victory: ${g.winner.nations.join(' + ')} (${g.winner.mode}).`);
+    publishWarEvent(g,'victory',{actor:g.winner.nations[0],summary:`Victory for ${g.winner.nations.map(n=>g.map.nations[n]?.name||n).join(' and ')}.`});}
   return g.winner;
 }
 export function tick(g,now=Date.now()){
   if(g.winner)return false;
+  if(g.timeLimitMs>0&&now-g.campaignStartAt>=g.timeLimitMs){
+    const winner=rankings(g).find(r=>g.map.nations[r.nation]?.playable);
+    if(winner){g.winner={nations:[winner.nation],mode:'time-limit'};g.movements=[];g.navalMovements=[];writeLog(g,`Time expired: ${winner.nation} wins on ranking.`);
+      publishWarEvent(g,'victory',{actor:winner.nation,summary:`${g.map.nations[winner.nation].name} won on ranking at the time limit.`});return true;}
+  }
   const elapsed=Math.max(0,Math.min(60000,now-g.lastTick));if(elapsed===0)return false;
   const prev=g.lastTick;g.lastTick=now;let changed=false;
   // Bank income is continuous per nation; unclaimed nations still accumulate.
   const bankTotals={};for(const p of g.provinces)bankTotals[p.owner]=(bankTotals[p.owner]||0)+p.buildings.bank;
-  for(const [n,c] of Object.entries(bankTotals)){g.money[n]=roundMoney(g.money[n]+c*.1*elapsed/1000);changed=true;}
+  for(const [n,c] of Object.entries(bankTotals)){
+    // Keep sub-cent production internally. Otherwise rounding each 100ms tick
+    // distorts small nation bonuses and makes income depend on tick frequency.
+    const exact=g.money[n]+(g.moneyRemainder?.[n]||0)+c*BANK_PER_SECOND*elapsed/1000*nationModifier(n,'bankIncome');
+    g.money[n]=roundMoney(exact);
+    if(g.moneyRemainder)g.moneyRemainder[n]=exact-g.money[n];
+    changed=true;
+  }
   // No automatic troop production: recruitment is an explicit paid command.
   const pending=[];
   for(const o of g.movements){
@@ -437,6 +619,8 @@ export function tick(g,now=Date.now()){
     else pending.push(o);
   }
   g.movements=g.winner?[]:pending;
+  if(tickNavy(g,now))changed=true;
+  if(tickBalloons(g,now))changed=true;
   return changed;
 }
 function canSeeEnemy(g,nation,p,now=Date.now(),spyVision=null){
@@ -446,33 +630,13 @@ function canSeeEnemy(g,nation,p,now=Date.now(),spyVision=null){
   if(spyVision?.has(p.id))return true;
   return g.movements.some(o=>o.type==='bomber'&&o.nation===nation&&o.to===p.id&&o.attacking&&o.arrivalAt-now<=10000);
 }
-/**
- * Calendar time is anchored to the game's start date. Every anniversary of
- * October 6 arrives exactly 20 real minutes after the last anniversary.
- * Intervening day lengths are determined by the actual Gregorian year span,
- * correctly accounting for February 29 without long-term calendar drift.
- */
-export function campaignDayAt(g, now=Date.now()){
-  const elapsedMs=Math.max(0,now-g.campaignStartAt);
-  const yearSeconds=Number(g.map.secondsPerYear);
-  if(!(yearSeconds>0)) return Math.floor(elapsedMs/(1000*(g.map.secondsPerDay||10)));
-  const yearMs=yearSeconds*1000;
-  const years=Math.floor(elapsedMs/yearMs);
-  const origin=Date.parse((g.map.startDate||'1939-10-06')+'T00:00:00Z');
-  const initial=new Date(origin);
-  const anniversary=(n)=>Date.UTC(initial.getUTCFullYear()+n,initial.getUTCMonth(),initial.getUTCDate());
-  const start=anniversary(years),end=anniversary(years+1);
-  const days=(end-start)/86400000;
-  const fraction=(elapsedMs-years*yearMs)/yearMs;
-  return Math.round((start-origin)/86400000)+Math.min(days-1,Math.floor(fraction*days));
-}
 export function viewFor(g,nation,now=Date.now(),options={allyMoves:true,hostileMoves:true}){
   const spyVision=new Set();
   if(nation)for(const b of g.spyBalloons)if(b.nation===nation||relation(g,nation,b.nation)==='ally')
     for(const id of reconnaissanceZone(g,b.province))spyVision.add(id);
   const provinces=g.provinces.map(p=>{
     const visible=canSeeEnemy(g,nation,p,now,spyVision);
-    return {id:p.id,owner:p.owner,units:visible?{...p.units}:null,
+    return {id:p.id,owner:p.owner,units:visible?{...p.units}:null,healthByType:visible?{...p.healthByType}:null,fleet:visible?{...p.fleet}:null,
       garrison:visible?structuredClone(p.garrison):null,buildings:visible?{...p.buildings}:null,
       production:null,visible};
   });
@@ -482,7 +646,13 @@ export function viewFor(g,nation,now=Date.now(),options={allyMoves:true,hostileM
     return !!(options.hostileMoves&&nation&&o.attacking&&relation(g,nation,o.nation)==='war'&&
       g.provinces[o.to-1].owner===nation&&o.arrivalAt-now<=20000);
   }).map(o=>({...o}));
+  const navalMovements=g.navalMovements.filter(o=>o.nation===nation||(nation&&relation(g,nation,o.nation)==='ally')||
+    (nation&&o.attacking&&g.provinces[o.to-1].owner===nation&&o.arrivalAt-now<20000));
   return {provinces,occupied:[],money:nation?g.money[nation]:null,rankings:rankings(g),
+    warNews:(g.warEvents||[]).slice(0,80),battleReports:battleReportsFor(g,nation),
+    nationTraits:NATION_TRAITS,
+    capitals:{...g.capitals},capitalStatus:Object.fromEntries(Object.keys(g.capitals).map(n=>[n,capitalControlled(g,n)])),
+    navalMovements:navalMovements.map(o=>({...o})), matchLimitSeconds:g.timeLimitMs/1000,
     spyBalloons:g.spyBalloons.filter(b=>nation&&(b.nation===nation||relation(g,nation,b.nation)==='ally')).map(b=>({...b})),
     campaignDay:campaignDayAt(g,now),elapsedSeconds:Math.max(0,Math.floor((now-g.campaignStartAt)/1000)),
     winner:g.winner,diplomacy:g.diplomacy,requests:g.requests,peaceRequests:g.peaceRequests,

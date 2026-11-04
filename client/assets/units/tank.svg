@@ -1,8 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-<g fill="#67786b" stroke="#243127" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
-<path d="M18 87h92l-7 16H29z" fill="#2f3d32"/>
-<rect x="27" y="57" width="63" height="25" rx="4" fill="#6f806f"/>
-<path d="M52 49h30l15 8v10H47V57z" fill="#778774"/>
-<path d="M80 55h34" fill="none" stroke-width="6"/>
-<circle cx="40" cy="95" r="7" fill="#151b16"/><circle cx="59" cy="95" r="7" fill="#151b16"/><circle cx="79" cy="95" r="7" fill="#151b16"/><circle cx="97" cy="95" r="7" fill="#151b16"/>
-</g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs>
+<linearGradient id="iron" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ebebd9"/><stop offset=".4" stop-color="#8b9e9e"/><stop offset="1" stop-color="#303d45"/></linearGradient>
+<linearGradient id="olive" x1="0" y1="0" x2=".7" y2="1"><stop stop-color="#e1e5b5"/><stop offset=".4" stop-color="#788e61"/><stop offset="1" stop-color="#283d33"/></linearGradient>
+<linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff2b1"/><stop offset=".55" stop-color="#c49a49"/><stop offset="1" stop-color="#694b22"/></linearGradient>
+<linearGradient id="red" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffbca6"/><stop offset=".6" stop-color="#c04435"/><stop offset="1" stop-color="#5c1d1c"/></linearGradient>
+<linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#b7e4ff"/><stop offset=".58" stop-color="#4d91bd"/><stop offset="1" stop-color="#254566"/></linearGradient>
+<filter id="shade" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2"/></filter></defs><g stroke="#26312b" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16 84l10-26 78-3 10 25-7 27-86-2z" fill="#2b3b32"/><path d="M26 90h81v12H26z" fill="url(#iron)"/><g fill="#253430" stroke="#a1ad83" stroke-width="3"><circle cx="35" cy="95" r="7"/><circle cx="54" cy="95" r="7"/><circle cx="73" cy="95" r="7"/><circle cx="93" cy="95" r="7"/></g><path d="M20 66l10-16 64-3 17 18-7 20-76 2z" fill="url(#olive)"/><path d="M46 51l13-19 32 3 10 18-22 16-27-2z" fill="url(#iron)"/><path d="M80 41l38-10 4 8-36 19" fill="url(#olive)"/><rect x="52" y="51" width="19" height="8" rx="2" fill="#343e35"/><path d="M32 62l62-5" fill="none" stroke="#cedc98" opacity=".7"/></g></svg>

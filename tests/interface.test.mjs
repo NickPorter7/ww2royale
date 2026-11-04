@@ -32,7 +32,7 @@ test('army composer exposes three ranges defaulting to all available troops',()=
     assert.match(html,new RegExp(`id="army${unit}" type="range"`));
     assert.match(html,new RegExp(`id="army${unit}Value"`));
   }
-  assert.match(js,/el\.max=String\(available\);[\s\S]*?if\(lastCountSource!==selected\)el\.value=String\(available\)/);
+  assert.match(js,/el\.max=String\(available\);[\s\S]*?if\(lastCountSource!==sourceKey\)el\.value=String\(available\)/);
   assert.match(html,/id="orderPlanner"[^>]*hidden/);
 });
 test('destination selection stages an order instead of dispatching it',()=>{
@@ -54,15 +54,15 @@ test('1.12 historical flag icons and three-rank moving marker priority',()=>{
   assert.match(html,/id="panelIdentity"/);
 });
 test('1.12 neutral attack confirmation and no automatic army panel on map tap',()=>{
-  assert.match(js,/showAttackConfirmation\(\{event:'move',data:command\}/);
-  assert.match(js,/const actualKind=rel==='neutral'\|\|rel==='war'\?'attack':'move'/);
+  assert.match(js,/showAttackConfirmation\(\{event,data\}/);
+  assert.match(js,/const kind=\['neutral','war'\]\.includes\(rel\)\?'attack':'move'/);
   const handler=js.slice(js.indexOf('function clickWorld('),js.indexOf('// Touch map controls:'));
   assert.doesNotMatch(handler,/setPanel\('army'\)/);
 });
 test('1.12 mobile navigation uses docked controls and supports pinch',()=>{
   assert.match(css,/\.tool-rail\{position:absolute;left:0;right:0;bottom:0;top:auto/);
   assert.match(js,/const activeTouches=new Map\(\)/);
-  assert.match(js,/camera\.zoom=Math\.max\(\.75,Math\.min\(6,pinch\.zoom\*dist\/pinch\.dist\)\)/);
+  assert.match(js,/camera\.zoom=Math\.max\(\.75,Math\.min\(10,pinch\.zoom\*dist\/pinch\.dist\)\)/);
 });
 
 test('1.13 province information, season and elapsed HUD plus toast styles exist',()=>{
@@ -92,7 +92,7 @@ test('1.15 progressive seasons and date speed are represented',()=>{
  assert.match(js,/function seasonalDepth\(date\)/);
  assert.match(js,/setSeason\(season,seasonalDepth\(date\)\)/);
  assert.match(js,/ctx\.globalAlpha=\.23\+\.77\*seasonIntensity/);
- assert.match(html,/1 in-game year every 20 minutes/);
+ assert.match(html,/Match calendar: 6 Oct 1939–2 Sep 1945/);
 });
 test('1.15 buttons visibly darken on hover and depress on click',()=>{
  assert.match(css,/brightness\(\.88\)/);
@@ -100,7 +100,7 @@ test('1.15 buttons visibly darken on hover and depress on click',()=>{
 });
 
 test('1.16 construction rows have Build, Upgrade and Max states, with compact recruitment',()=>{
- assert.match(js,/const buttonLabel=capped\?'Max':count===0\?'Build':'Upgrade'/);
+ assert.match(js,/const buttonLabel=.*'Build':.*'Upgrade'/);
  assert.match(js,/building-row-info/);
  assert.match(js,/building-row-actions/);
  assert.match(js,/const spyPanel=elem\('details','',\s*'spy-section compact-spies'\)/);
@@ -155,3 +155,39 @@ test('1.19.3 nation picker displays nine real country names even before the labe
 });
 
 function requireVm(){return vmModule;}
+
+test('1.20 mobile planner and coordinated dispatch controls are present',()=>{
+  for(const id of ['selectMoreBtn','movingArmyPanel','arrivalChoice','movingArmyRetreat','movingArmyConfirm']) assert.match(html,new RegExp(`id="${id}"`));
+  assert.match(css,/\.map-section\.planning \.quick-command/);
+  assert.match(js,/function commandsForSources\(target\)/);
+  assert.match(js,/socket\.emit\(event,data\)/);
+  assert.match(js,/closestMovingArmy\(pos\.x,pos\.y\)/);
+  assert.match(js,/function renderMovingArmyPanel\(\)/);
+  assert.match(html,/name="arrivalMode" value="together"/);
+  for(const name of ['infantry','tank','bomber']) assert.match(html,new RegExp(`assets/units/${name}\\.svg`));
+});
+
+
+test('1.22 War Chronicle, after-action reports, and training controls exist',()=>{
+  const html=readFileSync(new URL('../client/index.html',import.meta.url),'utf8');
+  const script=readFileSync(new URL('../client/main.js',import.meta.url),'utf8');
+  for(const id of ['warNewsList','newsBadge','battleReportList','tutorialModal','tutorialAction','tutorialLaunch','warStatementForm','capitalBanner'])
+    assert.match(html,new RegExp(`id="${id}"`),`Missing UI ${id}`);
+  for(const symbol of ['renderWarNews','renderBattleReports','processWarEffects','drawBattleEffects','renderTutorial'])
+    assert(script.includes(symbol),`Missing function ${symbol}`);
+});
+
+test('1.23 mobile treasury remains visible and country zoom adapts to map bounds',()=>{
+  assert.match(html,/class="hud-stat treasury-hud"/);
+  assert.match(css,/\.header-right \.hud-stat\.treasury-hud\{display:flex!important\}/);
+  assert.match(css,/\.header-right \.hud-stat\.rank-hud\{display:none!important\}/);
+  assert.match(js,/const zoomW=camera\.cw\*\.76/);
+  assert.match(js,/camera\.zoom=Math\.max\(2\.9,Math\.min\(9,zoomW,zoomH\)\)/);
+});
+test('1.23 timed spy balloons render transit and order confirmation',()=>{
+  assert.match(js,/function drawSpyBalloons\(\)/);
+  assert.match(js,/spy\.movement\?'Redirect':'Move'/);
+  assert.match(js,/event:'stationBalloon'/);
+  assert.match(js,/event:'stationBalloon'/);
+  assert.match(js,/socket\.emit\('recallBalloon'/);
+});

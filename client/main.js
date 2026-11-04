@@ -94,10 +94,15 @@ let seasonIntensity=0.35, weatherIntensity=0.35;
 let labels = true, pendingOrder=null, draftTarget=null, redirectOrderId=null, redirectTarget=null, isPublicMatch=false;
 let lastCountSource=null,lastSidebarAt=0,lastChoiceKey='',lastBuildRenderKey='';
 let actionMode=null, territoryBorderCanvas=null, paintKey='';
+let selectedSources=[], selectingMore=false, focusedOrderId=null;
+let navalMode=false, navalSelection=null;
 let movementPrefs={allyMoves:true,hostileMoves:true};
 let showJoinOnConnect = true;
 let activePanel = null;
 let lastChatSeen = null;
+let lastNewsSeen=null,lastNewsRenderKey=null,lastBattleRenderKey=null,capitalBannerTimer=null;
+let battleFxEnabled=!window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const activeBattleFx=[];
 let lastRequestsSeen = '';
 const PANEL_INFO = {
   army:['ARMY COMMAND','Army management'],
@@ -106,7 +111,8 @@ const PANEL_INFO = {
   chat:['COMMUNICATIONS','Messages'],
   orders:['GENERAL STAFF','Army movements'],
   rankings:['GLOBAL INTELLIGENCE','World standings'],
-  reports:['INTELLIGENCE OFFICE','War reports'],
+  reports:['BATTLE INTELLIGENCE','After-action reports'],
+  news:['WAR CHRONICLE','War Newspaper'],
   settings:['GAME PREFERENCES','Settings']
 };
 function setPanel(name){
@@ -124,6 +130,8 @@ function setPanel(name){
   }
   if(name==='chat')$('chatBadge').hidden=true;
   if(name==='diplomacy')$('diplomacyBadge').hidden=true;
+  if(name==='news'){ $('newsBadge').hidden=true;renderWarNews(); }
+  if(name==='reports')renderBattleReports();
 }
 function showJoinError(message){ $('joinError').textContent=message; $('joinError').hidden=false; }
 async function copyRoomCode(){
@@ -178,10 +186,11 @@ function setSeason(season, depth=0.5){
   if(season!=='summer'){
     const mobile=window.matchMedia('(max-width:700px)').matches;
     // Density increases visually toward the deepest part of the season.
-    const count=season==='winter'?(mobile?46:82):(mobile?24:45);
+    const count=season==='winter'?(mobile?92:156):(mobile?24:45);
     for(let i=0;i<count;i++){
       const flake=document.createElement('span');flake.className='weather-particle';
       flake.style.setProperty('--x',`${(i*61.8034)%100}%`);
+      if(season==='winter'){flake.style.setProperty('--size',`${2+(i%5)*0.75}px`);flake.style.setProperty('--blur',`${(i%4)*0.35}px`);}
       flake.style.setProperty('--speed',`${6+(i%9)*1.1}s`);
       flake.style.setProperty('--delay',`${-(i*2.17)%15}s`);
       flake.style.setProperty('--drift',`${(i%2===0?1:-1)*(12+(i%8)*9)}px`);
@@ -210,13 +219,22 @@ function focusNationOnMobile(nation){
   if(!map||!nation||!window.matchMedia('(max-width:700px)').matches)return;
   const provinces=map.provinces.filter(p=>p.nation===nation);
   if(!provinces.length)return;
-  const weight=provinces.reduce((a,p)=>a+Math.max(1,p.area),0);
-  const x=provinces.reduce((a,p)=>a+p.x*Math.max(1,p.area),0)/weight;
-  const y=provinces.reduce((a,p)=>a+p.y*Math.max(1,p.area),0)/weight;
-  camera.zoom=2.9;
-  const scale=Math.min(camera.cw/map.width,camera.ch/map.height)*camera.zoom;
-  camera.panX=(map.width/2-x)*scale;
-  camera.panY=(map.height/2-y)*scale;
+  const points=provinces.flatMap(p=>(p.paths||[]).flat());
+  const xs=points.map(pt=>pt[0]),ys=points.map(pt=>pt[1]);
+  if(!xs.length)return;
+  const left=Math.min(...xs),right=Math.max(...xs),top=Math.min(...ys),bottom=Math.max(...ys);
+  const fit=Math.min(camera.cw/map.width,camera.ch/map.height);
+  if(!(fit>0))return;
+  // Fit the complete starting nation at roughly 76% of viewport width and
+  // 62% of height. Small nations (Portugal, Hungary, Romania) now open large
+  // enough to tap individual provinces without immediately pinch-zooming.
+  const zoomW=camera.cw*.76/(Math.max(60,right-left)*fit);
+  const zoomH=camera.ch*.62/(Math.max(60,bottom-top)*fit);
+  camera.zoom=Math.max(2.9,Math.min(9,zoomW,zoomH));
+  const scale=fit*camera.zoom;
+  const cx=(left+right)/2,cy=(top+bottom)/2;
+  camera.panX=(map.width/2-cx)*scale;
+  camera.panY=(map.height/2-cy)*scale;
   queueRender();
 }
 function worldFromClient(clientX,clientY){
@@ -559,7 +577,13 @@ function drawMovements(){
     ctx.lineWidth=2.2;ctx.strokeStyle=tint;ctx.setLineDash([11,8]);ctx.lineDashOffset=-now/85;ctx.stroke();ctx.setLineDash([]);
     // The highest-tier unit present determines the moving-army icon:
     // bomber > tank > infantry. No triangular route arrowhead.
+    if(order.id===focusedOrderId){ctx.save();ctx.strokeStyle='#ffe9a7';ctx.lineWidth=3;ctx.shadowColor='#f2c45a';ctx.shadowBlur=15;ctx.beginPath();ctx.arc(x,y,29,0,Math.PI*2);ctx.stroke();ctx.restore();}
     drawUnitIcon(x,y,selectedArmyIcon(order.units||{[order.type]:order.count}),tint);
+    const maxHP=(order.units?.infantry||0)*24+(order.units?.tank||0)*95+(order.units?.bomber||0)*42;
+    const remainingHP=Object.values(order.healthByType||{}).reduce((total,value)=>total+Number(value||0),0);
+    const health=maxHP?Math.max(0,Math.min(1,remainingHP/maxHP)):1;
+    ctx.save();ctx.fillStyle='rgba(5,15,19,.90)';ctx.fillRect(x-21,y+22,42,6);
+    ctx.fillStyle=health>.6?'#69ce81':health>.28?'#f2c05c':'#de6866';ctx.fillRect(x-20,y+23,40*health,4);ctx.restore();
     // Animated army counter rides with the arrow instead of sitting at its source.
     const movingCount=unitTotal(order.units||{[order.type]:order.count});
     const token=String(movingCount);
@@ -615,17 +639,79 @@ function drawDraftRoute(){
   drawUnitIcon(x,y,selectedArmyIcon(armyFormUnits()),tint,.85);
   ctx.restore();queueRender();
 }
+function drawNavalMovements(){
+  if(!game?.navalMovements?.length) return;
+  const now=gameNow();
+  for(const fleet of game.navalMovements){
+    const duration=Math.max(1,fleet.arrivalAt-fleet.startedAt),t=Math.max(0,Math.min(1,(now-fleet.startedAt)/duration));
+    const a=fleet.start,b=fleet.end;
+    if(!a||!b)continue;
+    const x=a.x+(b.x-a.x)*t,y=a.y+(b.y-a.y)*t;
+    const friendly=fleet.nation===assigned;
+    const tint=friendly?'#e6d18d':'#dd7b6f';
+    ctx.save();ctx.strokeStyle=tint;ctx.lineWidth=2.4;ctx.setLineDash([8,8]);ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.setLineDash([]);
+    const icon=unitArt.battleship;
+    if(icon?.complete)ctx.drawImage(icon,x-22,y-22,44,44);
+    else{ctx.fillStyle=tint;ctx.fillRect(x-10,y-4,20,8);}
+    const hp=Object.values(fleet.healthByType||{}).reduce((v,n)=>v+Number(n||0),0);
+    const max=(fleet.ships?.destroyer||0)*105+(fleet.ships?.submarine||0)*80+(fleet.ships?.battleship||0)*240;
+    const ratio=max?Math.min(1,hp/max):1;
+    ctx.fillStyle='#10212a';ctx.fillRect(x-20,y+22,40,5);
+    ctx.fillStyle=ratio>.5?'#75cf82':'#e4a46c';ctx.fillRect(x-20,y+22,40*ratio,5);
+    ctx.restore();
+  }
+}
+function spyMapPosition(balloon){
+  const move=balloon.movement;
+  if(!move){const p=definition.get(balloon.province);return p?{x:p.x+21,y:p.y-30}:null;}
+  const points=move.path||[];
+  const f=Math.max(0,(gameNow()-move.startedAt)/Math.max(1,move.stepMs));
+  const leg=Math.max(0,Math.min(points.length-2,Math.floor(f)));
+  const a=definition.get(points[leg]),b=definition.get(points[leg+1]);
+  if(!a||!b)return null;
+  const start=leg===0&&move.visualStart?move.visualStart:a;
+  const t=Math.max(0,Math.min(1,f-leg));
+  return {x:start.x+(b.x-start.x)*t,y:start.y+(b.y-start.y)*t};
+}
 function drawSpyBalloons(){
   if(!game?.spyBalloons?.length)return;
-  ctx.save();ctx.font='900 13px Arial';ctx.textAlign='center';ctx.textBaseline='middle';
-  const groups=new Map();for(const spy of game.spyBalloons){const key=spy.province+':'+spy.nation;groups.set(key,(groups.get(key)||0)+1);}
-  for(const [key,count] of groups){
+  const now=gameNow();
+  ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';
+  const stationary=new Map();
+  for(const spy of game.spyBalloons){
+    if(spy.movement){
+      const m=spy.movement,steps=m.path||[];
+      const fraction=Math.max(0,(now-m.startedAt)/Math.max(1,m.stepMs));
+      const leg=Math.max(0,Math.min(steps.length-2,Math.floor(fraction)));
+      const a=definition.get(steps[leg]),b=definition.get(steps[leg+1]);
+      if(!a||!b)continue;
+      const progress=Math.max(0,Math.min(1,fraction-leg));
+      const pos=spyMapPosition(spy);
+      if(!pos)continue;
+      const {x,y}=pos;
+      ctx.save();
+      ctx.strokeStyle='#c6d5ba';ctx.lineWidth=1.6;ctx.setLineDash([4,6]);
+      ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.setLineDash([]);
+      const art=unitArt.balloon;
+      if(art?.complete)ctx.drawImage(art,x-16,y-22,32,35);
+      else{ctx.fillStyle='#efe2bd';ctx.beginPath();ctx.ellipse(x,y,8,12,0,0,Math.PI*2);ctx.fill();}
+      ctx.font='800 10px Arial';ctx.fillStyle='#fff1cd';
+      ctx.fillText(fmtSeconds((m.arrivalAt-now)/1000),x,y-28);
+      ctx.restore();
+      continue;
+    }
+    const key=spy.province+':'+spy.nation;
+    stationary.set(key,(stationary.get(key)||0)+1);
+  }
+  for(const [key,count] of stationary){
     const [id,nation]=key.split(':'),p=definition.get(Number(id));if(!p)continue;
     const x=p.x+21,y=p.y-30;
-    ctx.fillStyle='rgba(13,43,60,.95)';ctx.strokeStyle=nation===assigned?'#e6d196':'#89c0f3';ctx.lineWidth=1.6;
-    ctx.beginPath();ctx.ellipse(x,y,11,14,0,0,Math.PI*2);ctx.fill();ctx.stroke();
-    ctx.beginPath();ctx.moveTo(x,y+14);ctx.lineTo(x,y+21);ctx.stroke();
-    ctx.fillStyle='#f2eac9';ctx.fillText(String(count),x,y);
+    ctx.strokeStyle=nation===assigned?'#e6d196':'#89c0f3';ctx.lineWidth=1.4;
+    const art=unitArt.balloon;
+    if(art?.complete)ctx.drawImage(art,x-17,y-20,34,38);
+    else{ctx.fillStyle='#f4e3ad';ctx.beginPath();ctx.ellipse(x,y,10,14,0,0,Math.PI*2);ctx.fill();}
+    ctx.font='900 12px Arial';ctx.fillStyle='#f9f2dc';ctx.strokeStyle='#0b1d26';ctx.lineWidth=3;
+    ctx.strokeText(String(count),x,y+22);ctx.fillText(String(count),x,y+22);
   }
   ctx.restore();
 }
@@ -660,6 +746,13 @@ function drawTroops(){
     ctx.fillStyle='#f7f0db';ctx.textAlign='right';
     ctx.fillText(label,x+width/2-4/scale,y+0.6/scale);
     ctx.restore();
+    // Persisted server health pools make this a real garrison HP bar.
+    const fullHP=(state.units.infantry||0)*24+(state.units.tank||0)*95+(state.units.bomber||0)*42;
+    const hp=Object.values(state.healthByType||{}).reduce((v,n)=>v+Number(n||0),0);
+    const hpFraction=fullHP?Math.max(0,Math.min(1,hp/fullHP)):1;
+    ctx.fillStyle='rgba(9,17,20,.8)';ctx.fillRect(x-18/scale,y+11/scale,36/scale,4/scale);
+    ctx.fillStyle=hpFraction>.6?'#73c88d':hpFraction>.25?'#e0bf65':'#d96461';
+    ctx.fillRect(x-17/scale,y+12/scale,(34*hpFraction)/scale,2/scale);
     let line=0;
     for(const [nation,stack] of garrisons){
       const allyCount=unitTotal(stack);
@@ -673,6 +766,23 @@ function drawTroops(){
       ctx.fillStyle='#f2f6ff';ctx.textAlign='center';ctx.fillText(allyText,x,ay);
     }
     ctx.font=`800 ${size}px Inter,Arial,sans-serif`;
+  }
+  ctx.restore();
+}
+function drawCapitals(){
+  if(!game?.capitals||!map) return;
+  ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';
+  for(const [nation,id] of Object.entries(game.capitals)){
+    const p=definition.get(id);if(!p)continue;
+    const held=game.provinces?.[id-1]?.owner===nation;
+    const caption=game.commanders?.[nation]||'';
+    const x=p.x,y=p.y-32;
+    ctx.fillStyle=held?'#e4c67e':'#c66b62';ctx.strokeStyle='#19242a';ctx.lineWidth=3;
+    ctx.font='bold 20px Georgia,serif';ctx.strokeText('★',x,y);ctx.fillText('★',x,y);
+    if(caption){ctx.font='700 11px Arial,sans-serif';
+      const w=Math.min(140,Math.max(54,ctx.measureText(caption).width+16));
+      ctx.fillStyle='rgba(14,27,33,.90)';ctx.fillRect(x-w/2,y-28,w,16);
+      ctx.fillStyle='#f9e4b4';ctx.fillText(caption.slice(0,20),x,y-20);}
   }
   ctx.restore();
 }
@@ -691,15 +801,148 @@ function draw(){
   // Previous release referenced a removed canvas and crashed all map rendering.
   if(borderImage)ctx.drawImage(borderImage,0,0);
   if(territoryBorderCanvas)ctx.drawImage(territoryBorderCanvas,0,0);
-  drawLabels();drawMovements();drawDraftRoute();
-  drawOutline(hovered,'rgba(251,236,157,.8)',2.7);drawOutline(draftTarget?null:selected,'#ffdc87',4);drawOutline(redirectTarget,'#ffbc76',3);
-  drawSpyBalloons();drawTroops();ctx.restore();if(game?.movements?.length)queueRender();
+  drawLabels();drawMovements();drawNavalMovements();drawDraftRoute();
+  drawOutline(hovered,'rgba(251,236,157,.8)',2.7);
+  for(const id of selectedSources.filter(id=>id!==selected))drawOutline(id,'#8adbb8',2.3);
+  drawOutline(draftTarget?null:selected,'#ffdc87',4);drawOutline(redirectTarget,'#ffbc76',3);
+  drawSpyBalloons();drawTroops();drawCapitals();drawBattleEffects();ctx.restore();if(game?.movements?.length||game?.navalMovements?.length||game?.spyBalloons?.some(b=>b.movement))queueRender();
 }
 function createButton(label,action,cls=''){
   const b=document.createElement('button');b.type='button';b.textContent=label;
   if(cls)b.className=cls;b.onclick=action;return b;
 }
 function elem(tag,txt,cls=''){const el=document.createElement(tag);el.textContent=txt;if(cls)el.className=cls;return el;}
+
+function nationTrait(nation){return game?.nationTraits?.[nation]||null;}
+function adjustedCost(base,kind){
+  const trait=nationTrait(assigned);
+  const applies=(kind==='port'&&trait?.kind==='portCost')||
+    (kind==='infantry'&&trait?.kind==='infantryCost')||
+    (kind==='tank'&&trait?.kind==='tankCost')||
+    (['destroyer','submarine','battleship'].includes(kind)&&trait?.kind==='shipCost');
+  return applies?Math.round(base*trait.value*100)/100:base;
+}
+function renderWarNews(){
+  if(activePanel!=='news')return;
+  const entries=game?.warNews||[],key=entries.map(e=>e.id).join(',');
+  if(key===lastNewsRenderKey)return;
+  lastNewsRenderKey=key;
+  const target=$('warNewsList');target.replaceChildren();
+  if(!entries.length){target.append(elem('p','No major dispatches yet. The first significant battle or diplomatic change will appear here.','news-empty'));return;}
+  for(const event of entries){
+    const card=elem('article','','war-story'+(event.kind==='capitalFall'?' war-story-capital':''));
+    const meta=elem('div','','war-story-meta');
+    meta.append(elem('span',(event.kind||'news').replace(/([A-Z])/g,' $1').toUpperCase()),elem('time',new Date(event.at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})));
+    const title=elem('h3',event.headline||'Dispatch');
+    const detail=elem('p',event.summary||'');
+    card.append(meta,title,detail);
+    if(event.actor&&map?.nations?.[event.actor]){
+      const byline=elem('div','','war-story-byline');byline.append(nationFlag(event.actor),elem('span',nationNames[event.actor]||event.actor));card.append(byline);
+    }
+    target.append(card);
+  }
+}
+function lossString(before={},after={}){
+  const labels={infantry:'Inf',tank:'Tank',bomber:'Air',destroyer:'Dest',submarine:'Sub',battleship:'BB'};
+  return Object.keys(labels).filter(t=>(before[t]||0)>0).map(t=>`${labels[t]} ${Math.max(0,(before[t]||0)-(after[t]||0))}`).join(' · ')||'No casualties';
+}
+function renderBattleReports(){
+  if(activePanel!=='reports')return;
+  const reports=game?.battleReports||[],key=reports.map(e=>e.id).join(',');
+  if(key===lastBattleRenderKey)return;
+  lastBattleRenderKey=key;
+  const target=$('battleReportList');target.replaceChildren();
+  if(!reports.length){target.append(elem('div','No battles involving your nation have been reported.','news-empty'));return;}
+  for(const r of reports){
+    const card=elem('article','','battle-report-card');
+    const friendly=r.attacker===assigned;
+    const head=elem('div','','battle-report-head');
+    head.append(elem('strong',`${r.kind==='naval'?'NAVAL CLASH':'BATTLE'} · ${definition.get(r.province)?.name||'Unknown'}`),
+      elem('time',new Date(r.at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})));
+    const countries=elem('div','','battle-report-parties');
+    countries.append(nationFlag(r.attacker),elem('span',nationNames[r.attacker]||r.attacker),elem('b','VS'),nationFlag(r.defender),elem('span',nationNames[r.defender]||r.defender));
+    const result=elem('p',`${r.won?'Territory / fleet breakthrough':'Defenders held or assault repelled'} · ${friendly?'Attacking':'Defending'} commander`,'battle-result');
+    const losses=elem('div','','battle-losses');
+    const att=elem('div','','battle-loss');att.append(elem('small','ATTACKER LOSSES'),elem('strong',lossString(r.attackerBefore,r.attackerAfter)));
+    const def=elem('div','','battle-loss');def.append(elem('small','DEFENDER LOSSES'),elem('strong',lossString(r.defenderBefore,r.defenderAfter)));
+    losses.append(att,def);card.append(head,countries,result,losses);target.append(card);
+  }
+}
+function showCapitalFall(event){
+  const banner=$('capitalBanner');if(!banner)return;
+  $('capitalBannerTitle').textContent=event.headline||'CAPITAL CAPTURED';
+  $('capitalBannerDetail').textContent=event.summary||'The balance of power has changed';
+  banner.hidden=false;banner.classList.remove('capital-banner-enter');void banner.offsetWidth;banner.classList.add('capital-banner-enter');
+  clearTimeout(capitalBannerTimer);
+  capitalBannerTimer=setTimeout(()=>{banner.hidden=true;},4100);
+}
+function processWarEffects(next){
+  const entries=next.warNews||[];
+  const highest=entries[0]?.id??0;
+  if(lastNewsSeen===null){lastNewsSeen=highest;return;}
+  if(highest<=lastNewsSeen)return;
+  const unseen=entries.filter(e=>e.id>lastNewsSeen).reverse();
+  lastNewsSeen=highest;
+  if(activePanel!=='news'&&unseen.length)$('newsBadge').hidden=false;
+  for(const item of unseen.slice(-8)){
+    if(item.kind==='capitalFall'){
+      showCapitalFall(item);playSound('attack',{volume:.45});
+    } else if(item.kind==='landBattle'||item.kind==='navalBattle'){
+      if(battleFxEnabled&&Number.isInteger(item.province)){
+        activeBattleFx.push({id:item.id,province:item.province,kind:item.kind,started:performance.now()});
+        if(activeBattleFx.length>8)activeBattleFx.shift();
+      }
+    }
+  }
+}
+function drawBattleEffects(){
+  if(!battleFxEnabled||!activeBattleFx.length)return;
+  const now=performance.now();
+  for(let i=activeBattleFx.length-1;i>=0;i--){
+    const effect=activeBattleFx[i],elapsed=now-effect.started;
+    if(elapsed>2300){activeBattleFx.splice(i,1);continue;}
+    const province=definition.get(effect.province);if(!province)continue;
+    const x=province.x,y=province.y,radius=8+(elapsed/2300)*38,fade=1-elapsed/2300;
+    ctx.save();ctx.globalAlpha=fade*.68;
+    ctx.strokeStyle=effect.kind==='naval'?'#b4e4eb':'#ffbc71';ctx.lineWidth=2.4;
+    ctx.beginPath();ctx.arc(x,y,radius,0,Math.PI*2);ctx.stroke();
+    for(let j=0;j<8;j++){
+      const angle=j*Math.PI/4+effect.id*1.3,rad=radius*.5;
+      const px=x+Math.cos(angle)*rad,py=y+Math.sin(angle)*rad;
+      ctx.fillStyle=j%2?'#d9c9ab':'#ffad70';
+      ctx.beginPath();ctx.arc(px,py,1.8+2*fade,0,Math.PI*2);ctx.fill();
+    }
+    ctx.restore();
+  }
+  if(activeBattleFx.length)queueRender();
+}
+const TUTORIAL_LESSONS=[
+  {title:'Choose your country',copy:'You are about to command France. Every nation controls its own provinces and armies.',button:'Take command of France',feedback:'France selected. Your capital is Paris.'},
+  {title:'Prepare your army',copy:'Barracks unlock infantry purchases. Recruit three additional infantry before issuing an order.',button:'Recruit 3 Infantry',feedback:'Three infantry recruited in Paris. Your army is getting stronger.'},
+  {title:'Move your troops',copy:'Movement takes time. Send a portion of your infantry from Paris to friendly Lyon.',button:'Move 10 troops to Lyon',feedback:'Troops have deployed to Lyon. Real matches show their travel progress.'},
+  {title:'Capture enemy territory',copy:'To invade a neutral country you must confirm a declaration of war. Attack the simulated enemy-held Strasbourg.',button:'Declare war and capture Strasbourg',feedback:'Strasbourg captured. You expanded your country by one province.'},
+  {title:'Use diplomacy',copy:'Military power matters, but diplomacy can protect your borders. Send a simulated alliance request.',button:'Request an alliance',feedback:'Training complete. Diplomacy and planning can decide a match.'}
+];
+let tutorialStep=0;
+function renderTutorial(){
+  const lesson=TUTORIAL_LESSONS[tutorialStep],done=tutorialStep>=TUTORIAL_LESSONS.length;
+  $('tutorialStepCount').textContent=done?'TRAINING COMPLETE':`LESSON ${tutorialStep+1} / ${TUTORIAL_LESSONS.length}`;
+  $('tutorialHeading').textContent=done?'Ready to command Europe':lesson.title;
+  $('tutorialText').textContent=done?'You have practiced recruitment, movement, attack and diplomacy. Start a real match whenever you are ready.':lesson.copy;
+  $('tutorialProgressFill').style.width=`${(Math.min(tutorialStep,TUTORIAL_LESSONS.length)/TUTORIAL_LESSONS.length)*100}%`;
+  $('tutorialAction').textContent=done?'Close training':lesson.button;
+  $('trainingParisCount').textContent=tutorialStep>=2?'28':'25';
+  $('trainingLyonCount').textContent=tutorialStep>=3?'25':'15';
+  $('trainingStrasCount').textContent=tutorialStep>=4?'10':'20';
+  $('tutorialFeedback').textContent=done?'You can repeat this training from the command menu.':tutorialStep===0?'This is a separate practice exercise. No live multiplayer actions are sent.':TUTORIAL_LESSONS[tutorialStep-1].feedback;
+  for(const [index,name] of [[0,'paris'],[1,'lyon'],[2,'strasbourg']]){
+    const node=document.querySelector('.training-'+name);
+    node?.classList.toggle('training-captured',index===2&&tutorialStep>=4);
+  }
+}
+function openTutorial(){tutorialStep=0;$('tutorialModal').hidden=false;renderTutorial();}
+function closeTutorial(){$('tutorialModal').hidden=true;}
+
 function renderProvinceStats(state,visible){
   const troops=$('selectionDetails'),builds=$('buildingDetails');
   troops.replaceChildren();builds.replaceChildren();
@@ -722,7 +965,7 @@ function renderProvinceStats(state,visible){
   }
   const banks=Number(state.buildings?.bank||0);
   const metrics=elem('div','','build-metrics');
-  for(const [value,label] of [[cash(banks*.1)+'/s','BANK INCOME'],[String(banks)+'/3','BANK LEVEL'],[state.buildings?.defense?'ACTIVE':'NONE','DEFENCE']]){
+  for(const [value,label] of [[cash(banks*.18)+'/s','BANK INCOME'],[String(banks)+'/3','BANK LEVEL'],[state.buildings?.defense?'ACTIVE':'NONE','DEFENCE']]){
     const tile=elem('div','','build-metric');tile.append(elem('span',label),elem('strong',value));metrics.append(tile);
   }
   builds.append(metrics);
@@ -731,8 +974,10 @@ function renderProvinceStats(state,visible){
     ['barracks','Barracks','ico-barracks','Recruit infantry'],
     ['workshop','Workshop','ico-autoshop','Purchase tanks'],
     ['airport','Airport','ico-airport','L1 balloons · L2 bombers'],
-    ['bank','Bank','ico-bank','+$0.10/sec per level'],
-    ['defense','Defence','ico-fort','20% pre-attack HP loss']
+    ['bank','Bank','ico-bank','+$0.18/sec per level'],
+    ['defense','Defence','ico-fort','20% pre-attack HP loss'],
+    ['port','Port','ico-airport','Builds naval units'],
+    ['capital','Capital','ico-bank','20% combat penalty if lost']
   ]){
     const tile=elem('div','','building-summary');
     const symbol=elem('span','','building-summary-icon');symbol.append(iconSvg(icon));
@@ -740,6 +985,7 @@ function renderProvinceStats(state,visible){
     tile.append(symbol,info,elem('b','Lv '+Number(state.buildings?.[key]||0),'building-summary-count'));list.append(tile);
   }
   builds.append(list);
+  if(state.fleet)builds.append(elem('div',`FLEET · ${Object.entries(state.fleet).map(([k,v])=>`${k} ${v}`).join(' · ')}`,'detail-heading'));
 }
 let lastIntelRenderKey="";
 function renderProvinceIntel(){
@@ -750,11 +996,11 @@ function renderProvinceIntel(){
   if(!state||!province){bar.hidden=true;lastIntelRenderKey='';return;}
   // Preserve horizontal scroll position in the compact mobile intelligence dock.
   // Server snapshots arrive often; rebuild tiles only when intelligence changes.
-  const intelKey=JSON.stringify([selected,state.owner,state.visible,state.units,state.buildings,state.garrison,
+  const intelKey=JSON.stringify([selected,state.owner,state.visible,state.units,state.healthByType,state.buildings,state.fleet,state.garrison,game?.capitals,game?.commanders,
     (game.spyBalloons||[]).filter(b=>b.province===selected).map(b=>b.id)]);
   if(lastIntelRenderKey===intelKey)return;
   lastIntelRenderKey=intelKey;
-  $('intelProvince').textContent=province.name.toUpperCase();
+  $('intelProvince').textContent=province.name.toUpperCase()+(game?.capitals?.[state.owner]===selected?' ★ CAPITAL':'')+(game?.commanders?.[state.owner]?' · '+game.commanders[state.owner]:'');
   const status=relationWith(state.owner);
   $('intelRelation').textContent=status==='self'?'YOUR PROVINCE':status==='ally'?'ALLIED':status==='war'?'AT WAR':'NEUTRAL';
   const flag=$('intelNationFlag');
@@ -771,12 +1017,19 @@ function renderProvinceIntel(){
       ['ico-tank',state.units?.tank||0,'TANKS'],
       ['ico-airport',state.units?.bomber||0,'BOMBERS']
     ]},
+    {title:'NAVY',items:[
+      ['ico-tank',state.fleet?.destroyer||0,'DESTROYERS'],
+      ['ico-airport',state.fleet?.submarine||0,'SUBMARINES'],
+      ['ico-fort',state.fleet?.battleship||0,'BATTLESHIPS']
+    ]},
     {title:'INFRASTRUCTURE',items:[
       ['ico-barracks',state.buildings?.barracks||0,'BARRACKS'],
       ['ico-autoshop',state.buildings?.workshop||0,'WORKSHOP'],
       ['ico-airport',state.buildings?.airport||0,'AIRPORT'],
       ['ico-bank',state.buildings?.bank||0,'BANK'],
-      ['ico-fort',state.buildings?.defense||0,'DEFENCE']
+      ['ico-fort',state.buildings?.defense||0,'DEFENCE'],
+      ['ico-airport',state.buildings?.port||0,'PORT'],
+      ['ico-bank',state.buildings?.capital||0,'CAPITAL']
     ]}
   ];
   for(const section of groups){
@@ -800,24 +1053,31 @@ function renderProvinceIntel(){
   if(allies.length)out.append(elem('div',allies.map(([n,a])=>`${nationNames[n]} garrison: ${unitTotal(a)}`).join(' · '),'intel-garrison'));
 }
 function iconSvg(name){
+  const artwork={'ico-users':'infantry','ico-tank':'tank','ico-autoshop':'tank','ico-barracks':'infantry','ico-airport':'bomber','ico-quick-build':'build','ico-quick-move':'move','ico-quick-attack':'attack','ico-diplomacy':'diplomacy','ico-chat':'chat','ico-orders':'orders','ico-ranking':'rankings'};
+  if(artwork[name]){const img=document.createElement('img');img.src=`/assets/units/${artwork[name]}.svg`;img.alt='';img.className='art-icon';return img;}
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
   svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');
   const use=document.createElementNS('http://www.w3.org/2000/svg','use');
   use.setAttribute('href','#'+name);svg.append(use);return svg;
 }
 const BUILDING_TYPES=[
-  {kind:'barracks',label:'Barracks',cost:20,max:1,icon:'ico-barracks',category:'INFANTRY',detail:'Unlocks infantry recruitment',rate:'LEVEL 1'},
-  {kind:'workshop',label:'Workshop',cost:90,max:1,icon:'ico-autoshop',category:'ARMOUR',detail:'Unlocks tank purchases',rate:'LEVEL 1'},
-  {kind:'airport',label:'Airport',cost:175,max:2,icon:'ico-airport',category:'AIR FORCE',detail:'Level 1: spy balloons · Level 2: bombers',rate:'MAX LEVEL 2'},
-  {kind:'bank',label:'Bank',cost:50,max:3,icon:'ico-bank',category:'ECONOMY',detail:'Each level generates $0.10 per second',rate:'MAX LEVEL 3'},
-  {kind:'defense',label:'Defence system',cost:200,max:1,icon:'ico-fort',category:'FORTIFICATION',detail:'Removes 20% incoming enemy army health',rate:'LEVEL 1'}
+  {kind:'barracks',label:'Barracks',cost:25,max:1,icon:'ico-barracks',detail:'Unlocks infantry recruitment'},
+  {kind:'workshop',label:'Workshop',cost:65,max:1,icon:'ico-autoshop',detail:'Unlocks tanks'},
+  {kind:'airport',label:'Airport',cost:125,max:2,icon:'ico-airport',detail:'Lv1 balloons · Lv2 bombers'},
+  {kind:'bank',label:'Bank',cost:60,max:3,icon:'ico-bank',detail:'$0.18/sec for each level'},
+  {kind:'defense',label:'Defence system',cost:150,max:1,icon:'ico-fort',detail:'20% pre-attack defence'},
+  {kind:'port',label:'Naval port',cost:105,max:1,icon:'ico-airport',detail:'Coastal only · commissions ships'},
+  {kind:'capital',label:'National capital',cost:245,max:1,icon:'ico-bank',detail:'Build here to relocate · lost capital weakens forces 20%'}
 ];
 const TRAINING_TYPES=[
-  {kind:'infantry',label:'Infantry',cost:15,icon:'ico-users',requirement:'Requires Barracks Lv.1',level:()=>1},
-  {kind:'tank',label:'Tank',cost:75,icon:'ico-tank',requirement:'Requires Workshop Lv.1',level:()=>1},
-  {kind:'balloon',label:'Spy balloon',cost:200,icon:'ico-airport',requirement:'Requires Airport Lv.1',level:()=>1},
-  {kind:'bomber',label:'Bomber',cost:150,icon:'ico-airport',requirement:'Requires Airport Lv.2',level:()=>2}
+  {kind:'infantry',label:'Infantry',cost:12,icon:'ico-users',requirement:'Barracks Lv1',level:()=>1},
+  {kind:'tank',label:'Tank',cost:55,icon:'ico-tank',requirement:'Workshop Lv1',level:()=>1},
+  {kind:'balloon',label:'Spy balloon',cost:180,icon:'ico-airport',requirement:'Airport Lv1',level:()=>1},
+  {kind:'bomber',label:'Bomber',cost:110,icon:'ico-airport',requirement:'Airport Lv2',level:()=>2}
 ];
+const SHIP_TYPES=[{kind:'destroyer',label:'Destroyer',cost:88,icon:'destroyer'},
+  {kind:'submarine',label:'Submarine',cost:100,icon:'submarine'},
+  {kind:'battleship',label:'Battleship',cost:225,icon:'battleship'}];
 function renderBuildButtons(state){
   const out=$('buildOptions');out.replaceChildren();
   const balance=Number(game?.money||0),province=selected;
@@ -829,7 +1089,11 @@ function renderBuildButtons(state){
   out.append(summary);
   const list=elem('div','','build-catalogue compact-build-catalogue');
   for(const bld of BUILDING_TYPES){
-    const count=Number(state.buildings?.[bld.kind]||0),capped=count>=bld.max,canAfford=balance>=bld.cost;
+    const count=Number(state.buildings?.[bld.kind]||0),capped=count>=bld.max&&bld.kind!=='capital';
+    const priceNow=adjustedCost(bld.cost,bld.kind),canAfford=balance>=priceNow;
+    const unavailable=bld.kind==='port'&&!definition.get(province)?.coastal;
+    const capitalHere=bld.kind==='capital'&&game?.capitals?.[assigned]===province;
+    const disabled=unavailable||capped||capitalHere;
     const card=elem('article','','building-row'+(capped?' capped':'')+(!canAfford&&!capped?' unaffordable':''));
     const emblem=elem('span','','building-row-icon');emblem.append(iconSvg(bld.icon));
     const info=elem('div','','building-row-info');
@@ -837,41 +1101,91 @@ function renderBuildButtons(state){
     heading.append(elem('strong',bld.label),elem('span',`Lv ${count}/${bld.max}`,'building-row-level'));
     info.append(heading,elem('small',bld.detail));
     const actions=elem('div','','building-row-actions');
-    const buttonLabel=capped?'Max':count===0?'Build':'Upgrade';
-    const price=elem('span',capped?'Complete':cash(bld.cost),'building-row-price');
+    const buttonLabel=capitalHere?'Current':capped?'Max':bld.kind==='capital'&&game?.capitals?.[assigned]?'Relocate':count===0?'Build':'Upgrade';
+    const price=elem('span',capped?'Complete':cash(priceNow),'building-row-price');
     const buy=createButton(buttonLabel,()=>{
       if(!selected||selected!==province)return;
       socket.emit('build',{province,kind:bld.kind});
     },'building-shop-buy building-row-buy');
-    buy.disabled=capped||!canAfford;
-    buy.title=capped?`${bld.label} at maximum level`:canAfford?`${buttonLabel} ${bld.label} for ${cash(bld.cost)}`:`Need ${cash(bld.cost)} to ${buttonLabel.toLowerCase()} ${bld.label.toLowerCase()}`;
+    buy.disabled=disabled||!canAfford;
+    buy.title=capped?`${bld.label} at maximum level`:canAfford?`${buttonLabel} ${bld.label} for ${cash(priceNow)}`:`Need ${cash(priceNow)} to ${buttonLabel.toLowerCase()} ${bld.label.toLowerCase()}`;
     actions.append(price,buy);card.append(emblem,info,actions);list.append(card);
   }
   out.append(list);
   const recruit=elem('section','','troop-shop compact-recruit');recruit.append(elem('h3','RECRUIT UNITS'));
   for(const unit of TRAINING_TYPES){
+    const unitPrice=adjustedCost(unit.cost,unit.kind);
     const built=unit.kind==='infantry'?state.buildings?.barracks:unit.kind==='tank'?state.buildings?.workshop:state.buildings?.airport;
     const unlocked=Number(built||0)>=unit.level();
     const card=elem('div','','troop-buy-card');
     const emblem=elem('div','','troop-buy-emblem');emblem.append(iconSvg(unit.icon));
-    const info=elem('div','','troop-buy-info');info.append(elem('strong',unit.label),elem('small',unlocked?`${cash(unit.cost)} per unit`:unit.requirement));
+    const info=elem('div','','troop-buy-info');info.append(elem('strong',unit.label),elem('small',unlocked?`${cash(unitPrice)} per unit`:unit.requirement));
     const actions=elem('div','','troop-buy-actions');
     for(const amount of [1,5]){
       const button=createButton(`+${amount}`,()=>socket.emit('buyUnit',{province:selected,type:unit.kind,amount}),'troop-buy-button');
-      button.disabled=!unlocked||balance<unit.cost*amount;button.title=`Buy ${amount} ${unit.label.toLowerCase()} for ${cash(unit.cost*amount)}`;actions.append(button);
+      button.disabled=!unlocked||balance<unitPrice*amount;button.title=`Buy ${amount} ${unit.label.toLowerCase()} for ${cash(unitPrice*amount)}`;actions.append(button);
     }
     card.append(emblem,info,actions);recruit.append(card);
   }
   out.append(recruit);
+  if(definition.get(province)?.coastal){
+    const navy=elem('section','','troop-shop naval-shop');navy.append(elem('h3','NAVAL FLEET · COASTAL PORT'));
+    if(!state.buildings?.port)navy.append(elem('small','Build a port to commission ships and launch fleets.'));
+    for(const ship of SHIP_TYPES){
+      const shipPrice=adjustedCost(ship.cost,ship.kind);
+      const row=elem('div','','troop-buy-card');
+      const art=document.createElement('img');art.className='naval-art';art.alt='';art.src=`/assets/units/${ship.icon}.svg`;
+      const info=elem('div','','troop-buy-info');info.append(elem('strong',ship.label),elem('small',`${cash(shipPrice)} each · ${state.fleet?.[ship.kind]||0} stationed`));
+      const actions=elem('div','','troop-buy-actions');
+      const btn=createButton('+1',()=>socket.emit('buyShip',{province,type:ship.kind,amount:1}),'troop-buy-button');
+      btn.disabled=!state.buildings?.port||balance<shipPrice;actions.append(btn);
+      row.append(art,info,actions);navy.append(row);
+    }
+    if(state.buildings?.port){
+      const controls=elem('div','','naval-dispatch');
+      controls.append(elem('strong','FLEET TO DISPATCH'));
+      for(const ship of SHIP_TYPES){
+        const row=elem('label','','fleet-amount');row.append(elem('span',ship.label));
+        const input=document.createElement('input');input.type='number';input.min='0';input.max=String(state.fleet?.[ship.kind]||0);
+        input.value=String(state.fleet?.[ship.kind]||0);input.id='ship-'+ship.kind;input.inputMode='numeric';
+        row.append(input);controls.append(row);
+      }
+      controls.append(createButton('Sail fleet · choose coastal target',()=>{
+        const ships={};let count=0;
+        for(const ship of SHIP_TYPES){
+          const el=$('ship-'+ship.kind),qty=Number(el?.value||0),max=Number(state.fleet?.[ship.kind]||0);
+          if(!Number.isSafeInteger(qty)||qty<0||qty>max)return notice('Invalid ship quantity.','error');
+          ships[ship.kind]=qty;count+=qty;
+        }
+        if(!count)return notice('Select at least one ship.','error');
+        navalSelection={from:province,ships};navalMode=true;$('cancelNaval').hidden=false;setPanel(null);
+        notice('Tap a coastal province to sail your fleet.','info');
+      },'primary-button'));
+      navy.append(controls);
+    }
+    out.append(navy);
+  }
   const spies=(game?.spyBalloons||[]).filter(b=>b.nation===assigned);
   const spyPanel=elem('details','','spy-section compact-spies');
   spyPanel.append(elem('summary',`Spy balloons (${spies.length}/20)`));
-  spyPanel.append(elem('small','Reveal troops and buildings two provinces away. Stationing is immediate.','intel-locked'));
+  spyPanel.append(elem('small','Reconnaissance reveals the current province and its immediate neighbours. Balloons fly between provinces at 8.5 seconds per border.','intel-locked'));
   for(const spy of spies){
-    const row=elem('div','','spy-item');row.append(elem('span',`#${spy.id} · ${definition.get(spy.province)?.name||'Unknown'}`));
-    const button=createButton('Station',()=>{
-      deployingBalloonId=spy.id;setPanel(null);notice('Select any map province to station the balloon.');
-    },'spy-deploy');row.append(button);spyPanel.append(row);
+    const row=elem('div','','spy-item');
+    const details=elem('span',`#${spy.id} · ${definition.get(spy.province)?.name||'Unknown'}`);
+    if(spy.movement){
+      const target=definition.get(spy.movement.to)?.name||'Destination';
+      details.append(elem('small',` → ${target} · ${fmtSeconds((spy.movement.arrivalAt-gameNow())/1000)}`,'order-meta'));
+    }
+    row.append(details);
+    row.append(createButton(spy.movement?'Redirect':'Move',()=>{
+      deployingBalloonId=spy.id;setPanel(null);
+      notice('Choose a destination province for the balloon.');
+    },'spy-deploy'));
+    if(spy.movement)row.append(createButton('Retreat',()=>{
+      socket.emit('recallBalloon',{id:spy.id});
+      notice('Balloon recalled at normal speed.','success');
+    },'spy-deploy'));
+    spyPanel.append(row);
   }
   out.append(spyPanel);
 }
@@ -879,19 +1193,18 @@ function renderBuildButtons(state){
 function updateBuildCatalogue(state){
   const balance=Number(game?.money||0);
   // Avoid destroying purchase buttons mid-click during frequent state snapshots.
-  const levels=['barracks','workshop','airport','bank','defense'].map(k=>state.buildings?.[k]||0);
-  const affordability=[...BUILDING_TYPES.map(b=>b.cost),...TRAINING_TYPES.flatMap(u=>[u.cost,u.cost*5])].map(price=>Number(balance>=price));
-  const spyKey=(game?.spyBalloons||[]).filter(b=>b.nation===assigned).map(b=>b.id+':'+b.province).join(',');
+  const levels=['barracks','workshop','airport','bank','defense','port','capital'].map(k=>state.buildings?.[k]||0);
+  levels.push(game?.capitals?.[assigned]||0);
+  levels.push(...SHIP_TYPES.map(ship=>state.fleet?.[ship.kind]||0));
+  const affordability=[...BUILDING_TYPES.map(b=>adjustedCost(b.cost,b.kind)),...TRAINING_TYPES.flatMap(u=>[adjustedCost(u.cost,u.kind),adjustedCost(u.cost,u.kind)*5])].map(price=>Number(balance>=price));
+  const spyKey=(game?.spyBalloons||[]).filter(b=>b.nation===assigned).map(b=>b.id+':'+b.province+':'+(b.movement?.arrivalAt||0)).join(',');
   const key=[selected,assigned,...levels,...affordability,spyKey].join('|');
   if(key!==lastBuildRenderKey){lastBuildRenderKey=key;renderBuildButtons(state);}
   else {const money=$('buildOptions')?.querySelector('.balance-text strong');if(money)money.textContent=cash(displayedTreasury());}
 }
 function setArmyPreset(full){
   if(!selected||!game||!assigned)return;
-  const state=game.provinces?.[selected-1];
-  if(!state)return;
-  const own=state.owner===assigned;
-  const stack=own?state.units:state.garrison?.[assigned];
+  const stack=sourceTotals();
   for(const kind of ['infantry','tank','bomber']){
     const input=$('army'+kind[0].toUpperCase()+kind.slice(1));
     input.value=full?String(Math.max(0,stack?.[kind]||0)):'0';
@@ -905,25 +1218,28 @@ function updateSidebar(){
   $('changeNation').disabled=!!assigned;
   $('myFlag').replaceChildren(assigned?nationFlag(assigned):document.createTextNode('—'));
   const badge=$('panelIdentity');if(badge){badge.hidden=!assigned;if(assigned)showNationIdentity(badge,assigned);}
+  const trait=assigned?nationTrait(assigned):null;
+  $('traitIdentity').textContent=trait?`${trait.name} · ${trait.description}`:'';
   $('moneyValue').textContent=assigned?cash(displayedTreasury()):'—';
   const rank=game?.rankings?.find(x=>x.nation===assigned);
   $('placementValue').textContent=rank?`#${rank.place} / ${Object.keys(map.nations).length}`:'—';
   const terr=game?.provinces?.filter(t=>t.owner===assigned)||[];
   $('provinceCount').textContent=terr.length;
   $('troopCount').textContent=(terr.reduce((n,p)=>n+unitTotal(p.units),0)+(game?.provinces||[]).reduce((n,p)=>n+unitTotal(p.garrison?.[assigned]),0)).toLocaleString();
-  $('productionCount').textContent=terr.reduce((n,p)=>n+(p.buildings?.bank||0),0)+' active bank levels';
+  $('productionCount').textContent=terr.reduce((n,p)=>n+(p.buildings?.bank||0),0)+' active bank levels'+(assigned&&game?.capitalStatus?.[assigned]===false?' · CAPITAL LOST (-20% HEALTH / ATTACK)':'');
   $('playersOnline').textContent=(game?.occupied?.length||0)+' commanders';
   const card=$('selectionCard');card.hidden=!selected;
   $('emptyProvince').hidden=!!selected;
   $('buildingProvinceCard').hidden=!selected;
   $('emptyBuildings').hidden=!!selected;
   $('quickCommand').hidden=true;
+  $('selectMoreBtn').hidden=true;
   if(selected){
     const p=definition.get(selected),state=game?.provinces?.[selected-1];
     $('selectionName').textContent=p?.name||'Unknown';
     $('buildingProvinceName').textContent=p?.name||'Unknown';
-    if(state)showNationIdentity($('selectionOwner'),state.owner,map.nations[state.owner]?.capital===p?.name?'CAPITAL':'');
-    if(state)showNationIdentity($('buildingProvinceOwner'),state.owner,map.nations[state.owner]?.capital===p?.name?'CAPITAL':'');
+    if(state)showNationIdentity($('selectionOwner'),state.owner,`${game?.commanders?.[state.owner]||'Unclaimed'}${game?.capitals?.[state.owner]===selected?' · CAPITAL':''}`);
+    if(state)showNationIdentity($('buildingProvinceOwner'),state.owner,`${game?.commanders?.[state.owner]||'Unclaimed'}${game?.capitals?.[state.owner]===selected?' · CAPITAL':''}`);
     const own=state?.owner===assigned;
     const fromAlly=state?.owner!==assigned&&relationWith(state?.owner)==='ally'&&unitTotal(state?.garrison?.[assigned])>0;
     const visible=!!state?.visible;
@@ -933,7 +1249,10 @@ function updateSidebar(){
     $('selectionOwner').style.borderColor=nationColor[state?.owner]||'#c9ad72';
     $('buildingProvinceOwner').style.borderColor=nationColor[state?.owner]||'#c9ad72';
     $('quickCommand').hidden=!(own||fromAlly);
-    $('quickBuild').disabled=!own;
+    $('selectMoreBtn').hidden=!(own||fromAlly)||!!actionMode;
+    $('selectMoreBtn').classList.toggle('active',selectingMore);
+    $('selectMoreLabel').textContent=selectingMore?`Done selecting (${getSourceIds().length})`:`Select more${getSourceIds().length>1?' ('+getSourceIds().length+')':''}`;
+    $('quickBuild').disabled=!own||getSourceIds().length>1;
     if(state){
       renderProvinceStats(state,visible);
       // The army composer is a contextual on-map panel, not part of the Army tab.
@@ -948,18 +1267,19 @@ function updateSidebar(){
         $('provinceDiplomacy').append(relationLine);
       }
       if(own||fromAlly){
-        const stack=own?state.units:state.garrison?.[assigned];
+        const stack=sourceTotals();
+        const sourceKey=getSourceIds().join(',');
         for(const t of ['infantry','tank','bomber']){
           const el=$('army'+t[0].toUpperCase()+t.slice(1));
           const available=Math.max(0,stack?.[t]||0);
           // Range inputs clamp values to their max. Always set max BEFORE
           // assigning the 100% default, otherwise every new order starts at 0.
           el.max=String(available);
-          if(lastCountSource!==selected)el.value=String(available);
+          if(lastCountSource!==sourceKey)el.value=String(available);
           else if(Number(el.value)>available)el.value=String(available);
           $('available'+t[0].toUpperCase()+t.slice(1)).textContent=available+' available';
         }
-        lastCountSource=selected;
+        lastCountSource=sourceKey;
         $('destinationCard').hidden=!draftTarget;
         $('clearDestination').hidden=!draftTarget;
         const rel=draftTarget?relationWith(game.provinces[draftTarget-1]?.owner):null;
@@ -973,15 +1293,16 @@ function updateSidebar(){
       }else{lastCountSource=null;draftTarget=null;if(own)updateBuildCatalogue(state);}
     }
   }
-  updateOrderUI();renderProvinceIntel();
-  renderNationChoices();renderOrders();renderRankings();renderDiplomacy();renderChat();
+  if(!selected)$('selectMoreBtn').hidden=true;
+  updateOrderUI();renderProvinceIntel();renderMovingArmyPanel();
+  renderNationChoices();renderOrders();renderRankings();renderDiplomacy();renderChat();renderWarNews();renderBattleReports();
   const log=$('warLog');log.replaceChildren();for(const entry of game?.log||[])log.append(elem('div',entry,'log-entry'));
 }
 function renderRankings(){
   const list=$('leaderboard');list.replaceChildren();
   for(const rank of game?.rankings||[]){
     const row=elem('div','', 'rank-row');const color=elem('span','','rank-color');color.style.background=nationColor[rank.nation];
-    row.append(nationFlag(rank.nation),elem('span',`${rank.place}. ${nationNames[rank.nation]}`,'rank-name'),elem('span',`${rank.score.toFixed(1)} pts · ${rank.provinces} provinces`,'rank-count'));
+    row.append(nationFlag(rank.nation),elem('span',`${rank.place}. ${nationNames[rank.nation]}${game?.commanders?.[rank.nation]?' · '+game.commanders[rank.nation]:''}`,'rank-name'),elem('span',`${rank.score.toFixed(1)} pts · ${rank.provinces} provinces`,'rank-count'));
     list.append(row);
   }
 }
@@ -991,7 +1312,7 @@ function renderNationChoices(){
   // The lobby can receive a server snapshot while seasonal images are still loading.
   const playable=Object.keys(map.nations).filter(id=>map.nations[id].playable);
   const names=playable.map(id=>map.nations[id].name || nationNames[id] || id);
-  const key=JSON.stringify([(game?.occupied||[]),assigned,isPublicMatch,playable,names]);
+  const key=JSON.stringify([(game?.occupied||[]),assigned,isPublicMatch,playable,names,game?.commanders]);
   if(key===lastChoiceKey)return;
   lastChoiceKey=key;
   const out=$('nationChoices');out.replaceChildren();
@@ -999,8 +1320,11 @@ function renderNationChoices(){
   if(assigned)random.disabled=true;out.append(random);
   for(let i=0;i<playable.length;i++){
     const id=playable[i],occupied=game?.occupied?.includes(id)&&assigned!==id;
-    const b=createButton(`${names[i]}${occupied?' (TAKEN)':''}`,()=>socket.emit('chooseNation',id),'nation-choice');b.disabled=!!occupied||!!assigned;
-    b.prepend(nationFlag(id));out.append(b);
+    const commander=game?.commanders?.[id];
+    const b=createButton(`${names[i]}${commander?' · '+commander:''}${occupied?' (TAKEN)':''}`,()=>socket.emit('chooseNation',id),'nation-choice');b.disabled=!!occupied||!!assigned;
+    b.prepend(nationFlag(id));
+    const trait=game?.nationTraits?.[id];if(trait)b.append(elem('small',`${trait.name} · ${trait.description}`,'nation-trait'));
+    out.append(b);
   }
 }
 function renderDiplomacy(){
@@ -1066,7 +1390,18 @@ function renderOrders(){
       actions.append(createButton('Clear',()=>{redirectTarget=null;renderOrders();}));out.append(actions);
     }
   }
-  if(!orders.length){out.append(elem('div','No armies in transit.'));return;}
+  const fleets=(game?.navalMovements||[]).filter(o=>o.nation===assigned);
+  for(const f of fleets){const row=elem('div','','order-row');
+    row.append(elem('div',`FLEET · ${Object.entries(f.ships||{}).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`).join(', ')} · ${definition.get(f.from)?.name} → ${definition.get(f.to)?.name}`),elem('b',fmtSeconds((f.arrivalAt-gameNow())/1000),'order-meta'));out.append(row);}
+  const balloons=(game?.spyBalloons||[]).filter(b=>b.nation===assigned&&b.movement);
+  for(const balloon of balloons){
+    const move=balloon.movement,row=elem('div','','order-row');
+    row.append(elem('div',`SPY BALLOON #${balloon.id} · ${definition.get(move.from)?.name||'Unknown'} → ${definition.get(move.to)?.name||'Unknown'}`),
+      elem('b',fmtSeconds((move.arrivalAt-gameNow())/1000),'order-meta'));
+    row.append(createButton('Retreat',()=>socket.emit('recallBalloon',{id:balloon.id}),'spy-deploy'));
+    out.append(row);
+  }
+  if(!orders.length){if(!fleets.length&&!balloons.length)out.append(elem('div','No armies, fleets or spy balloons in transit.'));return;}
   for(const o of orders){
     const row=elem('div','', 'order-row');
     const info=elem('div');info.append(elem('span',`${armyDescription(o)} · ${definition.get(o.from)?.name} → ${definition.get(o.to)?.name}`));
@@ -1093,35 +1428,102 @@ function updateCountryAndOwner(){
   queueRender();
 }
 
+function commandStack(provinceId){
+  const state=game?.provinces?.[provinceId-1];
+  if(!state||!assigned)return null;
+  if(state.owner===assigned)return state.units;
+  if(relationWith(state.owner)==='ally')return state.garrison?.[assigned]||null;
+  return null;
+}
+function eligibleCommandSource(provinceId){return unitTotal(commandStack(provinceId))>0;}
+function getSourceIds(){return [...new Set(selectedSources.length?selectedSources:[selected])].filter(id=>eligibleCommandSource(id));}
+function sourceTotals(){
+  const result={infantry:0,tank:0,bomber:0};
+  for(const id of getSourceIds()){const s=commandStack(id);for(const t of Object.keys(result))result[t]+=s?.[t]||0;}
+  return result;
+}
+// Greedy deterministic allocation ensures no unit can be counted twice. User's
+// aggregate sliders control the total across all selected source provinces.
+function commandsForSources(target){
+  const remaining={...armyFormUnits()};
+  const commands=[];
+  const rel=relationWith(game.provinces[target-1].owner);
+  const kind=['neutral','war'].includes(rel)?'attack':'move';
+  for(const from of getSourceIds()){
+    const available=commandStack(from),units={infantry:0,tank:0,bomber:0};
+    for(const t of Object.keys(units)){
+      units[t]=Math.min(remaining[t],available?.[t]||0);
+      remaining[t]-=units[t];
+    }
+    if(unitTotal(units))commands.push({from,to:target,units,kind,autoDeclareWar:rel==='neutral'});
+  }
+  if(Object.values(remaining).some(n=>n!==0))throw Error('Not enough units in selected provinces.');
+  return commands;
+}
+function currentArrivalMode(){return document.querySelector('input[name="arrivalMode"]:checked')?.value||'separate';}
+function closestMovingArmy(x,y){
+  if(!game?.movements?.length||!assigned)return null;
+  let closest=null,closestD=Infinity;
+  for(const order of game.movements){
+    if(order.nation!==assigned)continue;
+    const pos=orderPosition(order,gameNow());if(!pos)continue;
+    const d=Math.hypot(x-pos.x,y-pos.y)*camera.scale;
+    if(d<38&&d<closestD){closest=order;closestD=d;}
+  }
+  return closest;
+}
+function renderMovingArmyPanel(){
+  const panel=$('movingArmyPanel');
+  const order=game?.movements?.find(o=>o.id===focusedOrderId&&o.nation===assigned);
+  if(!order){focusedOrderId=null;redirectOrderId=null;redirectTarget=null;panel.hidden=true;return;}
+  panel.hidden=false;
+  const unitType=selectedArmyIcon(order.units||{[order.type]:order.count});
+  $('movingArmyIcon').src=`/assets/units/${unitType}.svg`;
+  $('movingArmySummary').textContent=`Army #${order.id} · ${unitTotal(order.units||{[order.type]:order.count})} units`;
+  const ret=!!order.recalling;
+  const changing=redirectOrderId===order.id;
+  $('movingArmyInstruction').textContent=ret?'Returning to its starting province':changing?(redirectTarget?`New target: ${definition.get(redirectTarget)?.name||'Unknown'}`:'Tap a new destination province on the map'):`${definition.get(order.from)?.name||'Start'} → ${definition.get(order.to)?.name||'Destination'} · ${fmtSeconds((order.arrivalAt-gameNow())/1000)} remaining`;
+  $('movingArmyMove').hidden=changing||ret;
+  $('movingArmyRetreat').hidden=changing||ret;
+  $('movingArmyConfirm').hidden=!changing||!redirectTarget;
+  $('movingArmyCancel').hidden=!changing;
+  if(changing&&redirectTarget){
+    const rel=relationWith(game.provinces[redirectTarget-1].owner);
+    $('movingArmyConfirm').disabled=!['self','ally','war'].includes(rel);
+  }
+}
 function armyFormUnits(){
   const units={};
   for(const t of ['infantry','tank','bomber'])units[t]=Number($('army'+t[0].toUpperCase()+t.slice(1)).value);
   return units;
 }
 function showAttackConfirmation(command,description){
-  pendingOrder=command;$('confirmDetails').textContent=description;$('confirmModal').hidden=false;
+  pendingOrder=command;
+  $('confirmDetails').textContent=description;
+  $('confirmModal').querySelector('h1').textContent=command.event==='sailFleet'?'CONFIRM NAVAL ORDER':'CONFIRM ATTACK';
+  $('confirmYes').textContent=command.event==='sailFleet'?'Sail fleet':'Launch attack';
+  $('confirmModal').hidden=false;
 }
 function dispatch(kind){
   if(!selected||!draftTarget||!assigned)return notice('Select a destination province.');
-  const units=armyFormUnits(),state=game.provinces[selected-1];
-  const stack=state.owner===assigned?state.units:state.garrison?.[assigned];
-  if(!['infantry','tank','bomber'].every(t=>Number.isSafeInteger(units[t])&&units[t]>=0&&units[t]<=(stack?.[t]||0))||!unitTotal(units))
+  const desired=armyFormUnits(),available=sourceTotals();
+  if(!['infantry','tank','bomber'].every(t=>Number.isSafeInteger(desired[t])&&desired[t]>=0&&desired[t]<=available[t])||!unitTotal(desired))
     return notice('Select valid troop quantities.');
+  let commands;try{commands=commandsForSources(draftTarget);}catch(e){return notice(e.message,'error');}
+  if(!commands.length)return notice('No army selected.');
   const rel=relationWith(game.provinces[draftTarget-1].owner);
-  const actualKind=rel==='neutral'||rel==='war'?'attack':'move';
-  const command={from:selected,to:draftTarget,units,kind:actualKind,autoDeclareWar:rel==='neutral'};
+  const data=commands.length>1?{orders:commands,arrivalMode:currentArrivalMode()}:commands[0];
+  const event=commands.length>1?'moveGroup':'move';
   if(rel==='neutral'){
-    // Only a neutral target causes a SECOND warning; the server declares war
-    // on dispatch after this explicit confirmation.
-    showAttackConfirmation({event:'move',data:command},`Confirm attack: this will declare war with ${nationNames[game.provinces[draftTarget-1].owner]}.`);
+    showAttackConfirmation({event,data},`Confirm attack: this will declare war with ${nationNames[game.provinces[draftTarget-1].owner]}.`);
     return;
   }
-  socket.emit('move',command);clearDeployment();
+  socket.emit(event,data);clearDeployment();
 }
+
 function currentOrderValidity(){
   if(!game||!selected||!actionMode)return {valid:false,message:'Select a starting province.'};
-  const source=game.provinces[selected-1];
-  const stack=source.owner===assigned?source.units:source.garrison?.[assigned];
+  const stack=sourceTotals();
   const units=armyFormUnits();
   if(!['infantry','tank','bomber'].every(t=>Number.isSafeInteger(units[t])&&units[t]>=0&&units[t]<=(stack?.[t]||0))||!unitTotal(units))
     return {valid:false,message:'Choose at least one available unit.'};
@@ -1143,13 +1545,16 @@ function updateArmyReadouts(){
 function updateOrderUI(){
   const planner=$('orderPlanner'),active=!!(selected&&game&&assigned&&actionMode);
   planner.hidden=!active;
+  $('mapContainer').classList.toggle('planning',active);
   const confirming=active&&!!draftTarget;
+  $('arrivalChoice').hidden=!(confirming&&getSourceIds().length>1);
   for(const id of ['quickMove','quickAttack','quickBuild'])$(id).hidden=confirming;
   for(const id of ['confirmOrderBtn','cancelOrderBtn'])$(id).hidden=!confirming;
   if(!active)return;
+  $('plannerCaption').textContent=confirming?`${getSourceIds().length} army source${getSourceIds().length>1?'s':''} · Review and confirm`:actionMode==='attack'?'ATTACK · Adjust units, then tap a target':'MOVE · Adjust units, then tap a destination';
   $('plannerTitle').textContent=actionMode==='attack'?'Attack order':'Movement order';
   $('plannerTitle').dataset.kind=actionMode;
-  $('plannerSource').textContent=definition.get(selected)?.name||'Source';
+  $('plannerSource').textContent=getSourceIds().length>1?`${getSourceIds().length} source provinces`:definition.get(selected)?.name||'Source';
   $('plannerInstructions').textContent=confirming?'Review your troops and target, then confirm or cancel.':'Adjust unit counts, then click a destination province on the map.';
   updateArmyReadouts();
   const status=currentOrderValidity();
@@ -1164,9 +1569,8 @@ function armAction(kind){
   const state=game.provinces[selected-1];
   if(state.owner!==assigned&&!(relationWith(state.owner)==='ally'&&unitTotal(state.garrison?.[assigned])>0))
     return notice('Select a province containing your troops.');
-  actionMode=kind;draftTarget=null;
+  selectingMore=false;actionMode=kind;draftTarget=null;
   setPanel(null);
-  notice(`Select ${kind==='attack'?'attack':'movement'} units with the sliders, then choose a destination.`);
   updateSidebar();queueRender();
 }
 function cancelDraftOrder(){
@@ -1174,28 +1578,61 @@ function cancelDraftOrder(){
   updateSidebar();queueRender();
 }
 function clearDeployment(){
-  selected=null;draftTarget=null;lastCountSource=null;actionMode=null;
+  selected=null;selectedSources=[];selectingMore=false;draftTarget=null;lastCountSource=null;actionMode=null;
   if(activePanel==='army'||activePanel==='buildings')setPanel(null);
   updateSidebar();queueRender();
 }
 function clickWorld(cx,cy){
   if(!game||!map)return;
   const pos=worldFromClient(cx,cy),id=pixelProvince(pos.x,pos.y);
-  if(deployingBalloonId){if(!id)return notice('Choose a land province for the balloon.');socket.emit('stationBalloon',{id:deployingBalloonId,province:id});deployingBalloonId=null;notice('Spy balloon stationing order submitted.','success');return;}
-  if(redirectOrderId){if(!id)return;redirectTarget=id;setPanel('orders');renderOrders();queueRender();return;}
+  if(navalMode){
+    if(!id||!definition.get(id)?.coastal)return notice('Select a coastal destination.','error');
+    if(id===navalSelection?.from)return notice('Choose a different destination.','error');
+    const rel=relationWith(game.provinces[id-1].owner);
+    const data={...navalSelection,to:id,autoDeclareWar:rel==='neutral'};
+    const desc=rel==='neutral'?`Sail your fleet to ${definition.get(id).name}? This declares war with ${nationNames[game.provinces[id-1].owner]}.`:`Sail fleet to ${definition.get(id).name}? Naval attacks bombard coastal defenders but do not capture land.`;
+    showAttackConfirmation({event:'sailFleet',data},desc);
+    return;
+  }
+  if(deployingBalloonId){
+    if(!id)return notice('Choose a province for the balloon.');
+    const balloon=game.spyBalloons?.find(b=>b.id===deployingBalloonId);
+    if(!balloon||balloon.province===id)return notice('Choose a different destination province.');
+    showAttackConfirmation({event:'stationBalloon',data:{id:deployingBalloonId,province:id}},
+      `Move reconnaissance balloon #${deployingBalloonId} to ${definition.get(id)?.name||'the selected province'}? It travels in real time and reveals each province only as it arrives.`);
+    deployingBalloonId=null;
+    return;
+  }
+  if(redirectOrderId){if(!id)return;redirectTarget=id;renderMovingArmyPanel();queueRender();return;}
   if(actionMode&&selected){
     if(!id)return notice('Choose a land province or press Cancel to abandon the order.');
-    if(id===selected)return notice('Choose a different destination.');
-    draftTarget=id;
-    updateSidebar();queueRender();
-    return; // Selecting a target never sends troops; only Confirm dispatches.
+    if(getSourceIds().includes(id))return notice('Choose a different destination.');
+    draftTarget=id;updateSidebar();queueRender();return;
   }
-  if(!id){clearDeployment();return;}
-  selected=selected===id?null:id;draftTarget=null;lastCountSource=null;
+  // A spy balloon is selectable on the map, just like a moving army.
+  const friendlySpy=(game.spyBalloons||[]).filter(b=>b.nation===assigned).find(b=>{
+    const marker=spyMapPosition(b);
+    return marker&&Math.hypot(marker.x-pos.x,marker.y-pos.y)<=Math.max(12,20/camera.scale);
+  });
+  if(friendlySpy){
+    if(friendlySpy.movement){setPanel('orders');renderOrders();}
+    else{deployingBalloonId=friendlySpy.id;setPanel(null);notice('Choose a new destination for spy balloon #'+friendlySpy.id+'.');}
+    return;
+  }
+  const moving=closestMovingArmy(pos.x,pos.y);
+  if(moving){focusedOrderId=moving.id;selectingMore=false;selected=null;selectedSources=[];draftTarget=null;actionMode=null;setPanel(null);updateSidebar();queueRender();return;}
+  if(selectingMore){
+    if(!id||!eligibleCommandSource(id))return notice('Select another province containing your troops.');
+    if(selectedSources.includes(id)&&selectedSources.length>1)selectedSources=selectedSources.filter(n=>n!==id);
+    else if(!selectedSources.includes(id)){if(selectedSources.length>=9)return notice('Select up to nine sources.');selectedSources.push(id);}
+    lastCountSource=null;updateSidebar();queueRender();return;
+  }
+  if(!id){clearDeployment();focusedOrderId=null;renderMovingArmyPanel();return;}
+  selected=selected===id?null:id;selectedSources=selected?[selected]:[];draftTarget=null;lastCountSource=null;
+  focusedOrderId=null;
   if(selected&&game.provinces[selected-1].owner!==assigned){
     const n=game.provinces[selected-1].owner;if($('dipTarget'))$('dipTarget').value=n;
   }
-  // Province taps never open a menu automatically. Build remains an explicit action.
   if(!selected&&(activePanel==='army'||activePanel==='buildings'))setPanel(null);
   updateSidebar();queueRender();
 }
@@ -1218,7 +1655,7 @@ canvas.addEventListener('pointermove',e=>{
   if(activeTouches.has(e.pointerId))activeTouches.set(e.pointerId,{x:e.clientX,y:e.clientY});
   if(pinch&&activeTouches.size>=2){
     const pts=[...activeTouches.values()].slice(0,2),dist=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);
-    camera.zoom=Math.max(.75,Math.min(6,pinch.zoom*dist/pinch.dist));
+    camera.zoom=Math.max(.75,Math.min(10,pinch.zoom*dist/pinch.dist));
     camera.panX=pinch.panX+((pts[0].x+pts[1].x)/2-pinch.centerX);
     camera.panY=pinch.panY+((pts[0].y+pts[1].y)/2-pinch.centerY);
     queueRender();return;
@@ -1250,11 +1687,11 @@ canvas.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'){$('hoverT
 canvas.addEventListener('contextmenu',e=>e.preventDefault());
 canvas.addEventListener('wheel',e=>{
   e.preventDefault();const before=worldFromClient(e.clientX,e.clientY);
-  camera.zoom=Math.max(.75,Math.min(5,camera.zoom*(e.deltaY<0?1.14:1/1.14)));
+  camera.zoom=Math.max(.75,Math.min(10,camera.zoom*(e.deltaY<0?1.14:1/1.14)));
   updateTransform();const after=worldFromClient(e.clientX,e.clientY);
   camera.panX+=(after.x-before.x)*camera.scale;camera.panY+=(after.y-before.y)*camera.scale;queueRender();
 },{passive:false});
-function zoom(f){camera.zoom=Math.max(.75,Math.min(5,camera.zoom*f));queueRender();}
+function zoom(f){camera.zoom=Math.max(.75,Math.min(10,camera.zoom*f));queueRender();}
 $('zoomIn').onclick=()=>zoom(1.25);$('zoomOut').onclick=()=>zoom(.8);
 $('zoomReset').onclick=()=>{camera.zoom=1;camera.panX=0;camera.panY=0;if(assigned)focusNationOnMobile(assigned);else queueRender();};
 for(const t of ['infantry','tank','bomber'])$('army'+t[0].toUpperCase()+t.slice(1)).addEventListener('input',()=>{
@@ -1268,6 +1705,31 @@ function updateDispatchButtons(){
   $('quickAttack').disabled=!selected||!hasUnits;
   updateOrderUI();
 }
+$('selectMoreBtn').onclick=()=>{
+  if(!selected||!eligibleCommandSource(selected))return notice('Choose a province containing your troops.');
+  selectingMore=!selectingMore;
+  if(selectingMore&&!selectedSources.length)selectedSources=[selected];
+  lastCountSource=null;updateSidebar();queueRender();
+};
+$('closeMovingArmy').onclick=()=>{focusedOrderId=null;redirectOrderId=null;redirectTarget=null;renderMovingArmyPanel();queueRender();};
+$('movingArmyMove').onclick=()=>{
+  if(!focusedOrderId)return;
+  redirectOrderId=focusedOrderId;redirectTarget=null;
+  renderMovingArmyPanel();notice('Tap a new destination on the map.');
+};
+$('movingArmyRetreat').onclick=()=>{
+  if(!focusedOrderId)return;
+  socket.emit('changeMovement',{id:focusedOrderId,action:'recall'});
+  focusedOrderId=null;redirectOrderId=null;redirectTarget=null;renderMovingArmyPanel();
+};
+$('movingArmyConfirm').onclick=()=>{
+  if(!redirectOrderId||!redirectTarget)return;
+  const rel=relationWith(game.provinces[redirectTarget-1].owner);
+  if(!['self','ally','war'].includes(rel))return notice('Declare war with this nation before redirecting an attack.','error');
+  socket.emit('changeMovement',{id:redirectOrderId,action:'redirect',to:redirectTarget,kind:rel==='war'?'attack':'move'});
+  focusedOrderId=null;redirectOrderId=null;redirectTarget=null;renderMovingArmyPanel();
+};
+$('movingArmyCancel').onclick=()=>{redirectOrderId=null;redirectTarget=null;renderMovingArmyPanel();};
 $('quickMove').onclick=()=>{ playSound('move',{volume:0.35}); armAction('move'); };
 $('quickAttack').onclick=()=>{ playSound('attack',{volume:0.32}); armAction('attack'); };
 $('confirmOrderBtn').onclick=()=>{
@@ -1284,6 +1746,9 @@ $('quickBuild').onclick=()=>{
   setPanel('buildings');updateSidebar();
 };
 $('clearDestination').onclick=()=>{draftTarget=null;updateSidebar();queueRender();};
+for(const input of document.querySelectorAll('input[name="arrivalMode"]'))input.onchange=()=>updateOrderUI();
+$('showBattleFx').checked=battleFxEnabled;
+$('showBattleFx').onchange=e=>{battleFxEnabled=e.target.checked;if(!battleFxEnabled)activeBattleFx.length=0;queueRender();};
 $('labelsMode').onchange=e=>{labels=e.target.checked;queueRender();};
 $('dipTarget').onchange=()=>renderDiplomacy();
 $('showAlly').onchange=e=>{movementPrefs.allyMoves=e.target.checked;socket.emit('preferences',movementPrefs);};
@@ -1292,23 +1757,52 @@ for(const btn of document.querySelectorAll('.rail-btn[data-panel]')){
   btn.onclick=()=>setPanel(activePanel===btn.dataset.panel?null:btn.dataset.panel);
 }
 $('panelClose').onclick=()=>setPanel(null);
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&deployingBalloonId){deployingBalloonId=null;notice('Balloon placement cancelled.');return;}if(e.key==='Escape'&&actionMode){cancelDraftOrder();return;}if(e.key==='Escape'&&$('confirmModal').hidden&&$('nationModal').hidden){setPanel(null);}});
+$('tutorialLaunch').onclick=openTutorial;
+$('tutorialNav').onclick=openTutorial;
+$('tutorialClose').onclick=closeTutorial;
+$('tutorialSkip').onclick=closeTutorial;
+$('warStatementForm').onsubmit=e=>{
+  e.preventDefault();
+  const body=$('warStatementText').value.trim();
+  if(body.length<5||body.length>160)return notice('Write a statement of 5–160 characters.','error');
+  if(!assigned)return notice('Select a nation to publish a statement.','error');
+  socket.emit('publishStatement',body);
+};
+socket.on('statementAccepted',()=>{$('warStatementText').value='';notice('Statement published in the War Chronicle.','success');});
+$('tutorialAction').onclick=()=>{if(tutorialStep>=TUTORIAL_LESSONS.length){closeTutorial();return;}
+  playSound(tutorialStep===1?'infantry':tutorialStep===3?'attack':'click',{volume:.38});
+  tutorialStep++;renderTutorial();};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('tutorialModal').hidden){closeTutorial();return;}if(e.key==='Escape'&&deployingBalloonId){deployingBalloonId=null;notice('Balloon placement cancelled.');return;}if(e.key==='Escape'&&actionMode){cancelDraftOrder();return;}if(e.key==='Escape'&&$('confirmModal').hidden&&$('nationModal').hidden){setPanel(null);}});
 $('chatForm').onsubmit=e=>{e.preventDefault();const input=$('chatInput');if(input.value.trim()){socket.emit('chat',{to:$('chatRecipient').value,message:input.value.trim()});playSound('message',{volume:0.4});}input.value='';};
-$('confirmYes').onclick=()=>{if(pendingOrder){if(pendingOrder.event==='move') playSound(orderSound(pendingOrder.data.units,pendingOrder.data.kind),{volume:0.55}); socket.emit(pendingOrder.event,pendingOrder.data);if(pendingOrder.event==='move')clearDeployment();}pendingOrder=null;$('confirmModal').hidden=true;updateSidebar();queueRender();};
-$('confirmNo').onclick=()=>{pendingOrder=null;$('confirmModal').hidden=true;};
+$('confirmYes').onclick=()=>{if(pendingOrder){if(pendingOrder.event==='move') playSound(orderSound(pendingOrder.data.units,pendingOrder.data.kind),{volume:0.55}); socket.emit(pendingOrder.event,pendingOrder.data);if(['move','moveGroup'].includes(pendingOrder.event))clearDeployment();
+    if(pendingOrder.event==='sailFleet'){navalMode=false;navalSelection=null;$('cancelNaval').hidden=true;clearDeployment();}}pendingOrder=null;$('confirmModal').hidden=true;updateSidebar();queueRender();};
+$('cancelNaval').onclick=()=>{navalMode=false;navalSelection=null;$('cancelNaval').hidden=true;notice('Fleet order cancelled.');};
+$('confirmNo').onclick=()=>{pendingOrder=null;$('confirmModal').hidden=true;navalMode=false;navalSelection=null;$('cancelNaval').hidden=true;};
+function savedUsername(){try{return localStorage.getItem('ww2royale-username')||'';}catch{return '';}}
+function saveUsername(value){try{localStorage.setItem('ww2royale-username',value);}catch{/* Storage may be blocked in private browsing. */}}
+function registerUsername(){
+  const name=$('playerNameInput').value.trim();
+  if(name.length<2){showJoinError('Enter a username of at least two characters.');return false;}
+  saveUsername(name.slice(0,20));
+  socket.emit('setUsername',name.slice(0,20));return true;
+}
+$('playerNameInput').value=savedUsername();
 $('joinForm').onsubmit=e=>{
   e.preventDefault();const code=$('roomInput').value.trim();
   if(!/^[0-9]{6}$/.test(code))return showJoinError('Please enter exactly six digits.');
   if(!socket.connected)return showJoinError('Not connected to the server.');
+  if(!registerUsername())return;
   $('joinError').hidden=true;socket.emit('joinRoom',code);
 };
 $('joinRandom').onclick=()=>{
   if(!socket.connected)return showJoinError('Not connected to the server.');
+  if(!registerUsername())return;
   $('joinError').hidden=true;socket.emit('joinRandom');
 };
 $('leaveQueue').onclick=()=>{socket.emit('leaveRoom');$('publicWaiting').hidden=true;room=null;assigned=null;isPublicMatch=false;$('joinModal').hidden=false;};
 $('createRoom').onclick=()=>{
   if(!socket.connected)return showJoinError('Not connected to the server.');
+  if(!registerUsername())return;
   $('joinError').hidden=true;socket.emit('createRoom');
 };
 $('roomButton').onclick=()=>{
@@ -1328,15 +1822,17 @@ function updateCampaignClock(state){
   $('campaignDate').textContent=date.toLocaleDateString('en-GB',{timeZone:'UTC',day:'numeric',month:'short',year:'numeric'}).toUpperCase();
   const month=date.getUTCMonth();const season=month===11||month<=1?'winter':month<=4?'spring':month<=7?'summer':'autumn';
   $('seasonBadge').textContent=`${season.toUpperCase()} · ${date.getUTCFullYear()}`;
+  $('seasonBadge').title=season==='winter'?'Winter logistics: infantry 17.5–20s per province, tanks 25–30s per province; naval voyages slow by up to 33%. Bombers unaffected.':'Normal travel speeds in spring, summer, and autumn.';
   setSeason(season,seasonalDepth(date));syncElapsed();
 }
 socket.on('connect',()=>{
   $('connectionDot').classList.add('online');$('connectionText').textContent='Server connected';
-  if(room){if(isPublicMatch)socket.emit('joinRandom');else socket.emit('joinRoom',room);assigned=null;selected=null;}else if(showJoinOnConnect)$('joinModal').hidden=false;
+  if(room){socket.emit('setUsername',savedUsername()||'Commander');if(isPublicMatch)socket.emit('joinRandom');else socket.emit('joinRoom',room);assigned=null;selected=null;}else if(showJoinOnConnect)$('joinModal').hidden=false;
 });
 socket.on('disconnect',()=>{$('connectionDot').classList.remove('online');$('connectionText').textContent='Server disconnected';notice('Connection lost; reconnecting…');});
 socket.on('joined',({code,public:isPublic})=>{
-  lastChatSeen=null;lastRequestsSeen='';lastBuildRenderKey='';$('chatBadge').hidden=true;$('diplomacyBadge').hidden=true;
+  lastChatSeen=null;lastNewsSeen=null;lastNewsRenderKey=null;lastBattleRenderKey=null;
+  lastRequestsSeen='';lastBuildRenderKey='';$('chatBadge').hidden=true;$('newsBadge').hidden=true;$('diplomacyBadge').hidden=true;
   $('returnGame').hidden=false;paintKey='';
   room=code;isPublicMatch=!!isPublic;$('roomCode').textContent=isPublic?'PUBLIC '+code:code;$('lobbyRoomCode').textContent=code;$('joinModal').hidden=true;showJoinOnConnect=false;assigned=null;selected=null;setPanel(null);
   $('spectateButton').hidden=isPublicMatch;
@@ -1355,6 +1851,8 @@ socket.on('state',next=>{
   // Capture a synchronized frame anchor on every authoritative update.
   if(Number.isFinite(next.serverTime)){gameClockServerAt=next.serverTime;gameClockClientAt=performance.now();}
   game=next;
+  processWarEffects(next);
+  renderWarNews();renderBattleReports();
   if(!$('nationModal').hidden)renderNationChoices();
   $('publicWaiting').hidden=!(next.public&&!next.started);
   if(next.public&&!next.started){$('waitingCount').textContent=`${next.playerCount} of 9 commanders connected. Match begins once 6 commanders select nations.`; $('waitingBar').style.width=(Math.min(next.playerCount,6)/6*100)+'%';$('waitingNation').textContent=assigned?`You will command ${nationNames[assigned]}.`:'Choose your nation to enter the war.';}
@@ -1363,15 +1861,15 @@ socket.on('state',next=>{
   if(next.winner)$('winnerName').textContent=next.winner.nations.map(n=>nationNames[n]).join(' + ')+' VICTORIOUS';
   const eliminated=!!(assigned&&next.started&&next.provinces.every(p=>p.owner!==assigned));
   if(eliminated&&!next.winner){$('victoryModal').hidden=false;$('winnerName').textContent='NATION ELIMINATED';$('victoryDescription').textContent='Your nation has lost every province. Return to the main menu to join another war.';$('restartButton').textContent='Return to main menu';}
-  else {$('restartButton').textContent='Return to main menu';$('victoryDescription').textContent='Victory requires 51% of territories solo, or 67% of territories with an ally.';}
+  else {$('restartButton').textContent='Return to main menu';$('victoryDescription').textContent=next.winner?.mode==='time-limit'?'Public match finished after 60 minutes. Winner determined by territory, treasury, and military ranking.':'Victory requires 51% of territories solo, or 67% of territories with an ally.';}
   updateCampaignClock(next);
 });
 socket.on('errorMessage',msg=>notice(String(msg),'error'));
 socket.on('buildAccepted',data=>{playSound('build',{volume:0.52});notice(`${data.kind} upgraded to level ${data.level}.`,'success');});
 socket.on('purchaseAccepted',data=>{playSound(data.type==='tank'?'tank':data.type==='bomber'?'plane':data.type==='balloon'?'plane':'infantry',{volume:0.56});notice(`Purchased ${data.amount} ${data.type}${data.amount>1?'s':''} for ${cash(data.total)}.`,'success');});
 socket.on('joinError',msg=>{showJoinError(String(msg));$('joinModal').hidden=false;});
-socket.on('orderAccepted',o=>{playSound(orderSound(o.units||{[o.type]:o.count},o.kind),{volume:0.48});notice(`Army dispatched · ETA ${fmtSeconds((o.arrivalAt-Date.now())/1000)}`);});
-socket.on('leftRoom',()=>{treasuryDisplay={value:null,at:0,nation:null};room=null;assigned=null;game=null;paintKey='';isPublicMatch=false;selected=null;draftTarget=null;actionMode=null;redirectOrderId=null;redirectTarget=null;deployingBalloonId=null;$('publicWaiting').hidden=true;$('joinModal').hidden=false;updateSidebar();queueRender();});
+socket.on('orderAccepted',o=>{playSound(o.naval?'plane':orderSound(o.units||{[o.type]:o.count},o.kind),{volume:0.48});notice(`${o.spy?'Spy balloon':o.naval?'Fleet':'Army'} dispatched · ETA ${fmtSeconds((o.arrivalAt-Date.now())/1000)}`);});
+socket.on('leftRoom',()=>{lastNewsSeen=null;activeBattleFx.length=0;treasuryDisplay={value:null,at:0,nation:null};room=null;assigned=null;game=null;paintKey='';isPublicMatch=false;selected=null;selectedSources=[];selectingMore=false;focusedOrderId=null;draftTarget=null;actionMode=null;redirectOrderId=null;redirectTarget=null;deployingBalloonId=null;$('publicWaiting').hidden=true;$('joinModal').hidden=false;updateSidebar();queueRender();});
 setInterval(()=>{
   for(const el of document.querySelectorAll('.order-remaining'))el.textContent=fmtSeconds((Number(el.dataset.arrival)-gameNow())/1000);
   // polling UI for money and timers: state updates from server every 100 ms or from game timer
@@ -1390,6 +1888,7 @@ setInterval(()=>{
       image('/assets/units/infantry.svg'),image('/assets/units/tank.svg'),image('/assets/units/bomber.svg'),image('/assets/units/balloon.svg')
     ]);
     map=data;mapImage=terrain;territoryImage=territories;borderImage=borders; unitArt={infantry:infantryIcon,tank:tankIcon,bomber:bomberIcon,balloon:balloonIcon};
+    try{unitArt.battleship=await image('/assets/units/battleship.svg');}catch(e){console.warn('Missing naval icon',e);}
     // Populate nation labels before awaiting optional seasonal artwork. The lobby
     // can render during these image loads and must never display "undefined".
     for(const [id,nation] of Object.entries(map.nations)){nationColor[id]=nation.color;nationNames[id]=nation.name;}

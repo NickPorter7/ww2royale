@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs>
+<linearGradient id="iron" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ebebd9"/><stop offset=".4" stop-color="#8b9e9e"/><stop offset="1" stop-color="#303d45"/></linearGradient>
+<linearGradient id="olive" x1="0" y1="0" x2=".7" y2="1"><stop stop-color="#e1e5b5"/><stop offset=".4" stop-color="#788e61"/><stop offset="1" stop-color="#283d33"/></linearGradient>
+<linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff2b1"/><stop offset=".55" stop-color="#c49a49"/><stop offset="1" stop-color="#694b22"/></linearGradient>
+<linearGradient id="red" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffbca6"/><stop offset=".6" stop-color="#c04435"/><stop offset="1" stop-color="#5c1d1c"/></linearGradient>
+<linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#b7e4ff"/><stop offset=".58" stop-color="#4d91bd"/><stop offset="1" stop-color="#254566"/></linearGradient>
+<filter id="shade" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2"/></filter></defs><g stroke="#26312b" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="44" cy="38" r="16" fill="url(#gold)"/><circle cx="83" cy="38" r="16" fill="url(#iron)"/><path d="M15 106V83q2-23 29-23t29 23v23z" fill="url(#olive)"/><path d="M60 106V83q2-23 23-23t28 23v23z" fill="url(#blue)"/><path d="M62 21v30m-15-15h30" fill="none" stroke="#fff2c2" stroke-width="6"/></g></svg>

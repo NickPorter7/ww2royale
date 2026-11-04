@@ -6,7 +6,7 @@
   <link rel="icon" type="image/x-icon" href="/favicon.ico?v=1191" sizes="any">
   <link rel="icon" type="image/png" href="/favicon-256.png?v=1191" sizes="256x256">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=1191">
-  <link rel="stylesheet" href="/style.css?v=1192"><script defer src="/main.js?v=1192"></script>
+  <link rel="stylesheet" href="/style.css?v=1200"><script defer src="/main.js?v=1200"></script>
 </head>
 <body>
 <!-- Lightweight inline icons keep the game fully playable offline. -->
@@ -40,8 +40,8 @@
   <div class="brand"><img class="brand-seal brand-logo" src="/assets/branding/logo-128.png" alt="WW2 Royale logo" width="48" height="48"><div><div class="brand-main">WW2 <span>ROYALE</span></div><div class="brand-sub">WW2 SANDBOX</div></div></div>
   <div class="header-center"><span class="era-dot"></span><span class="campaign-title">EUROPE · <strong id="campaignDate">6 OCT 1939</strong></span><span class="topbar-divider"></span><div class="connection"><span id="connectionDot" class="dot"></span><span id="connectionText">Connecting…</span></div></div>
   <div class="header-right"><div class="elapsed-hud" title="Real time elapsed since match start"><span>ELAPSED</span><strong id="elapsedClock">00:00</strong></div>
-    <div class="hud-stat"><span class="hud-stat-label">TREASURY</span><strong id="moneyValue">—</strong></div>
-    <div class="hud-stat"><span class="hud-stat-label">WORLD RANK</span><strong id="placementValue">—</strong></div>
+    <div class="hud-stat treasury-hud"><span class="hud-stat-label">TREASURY</span><strong id="moneyValue">—</strong></div>
+    <div class="hud-stat rank-hud"><span class="hud-stat-label">WORLD RANK</span><strong id="placementValue">—</strong></div>
     <div class="server-strip"><span class="server-strip-label">PRIVATE ROOM</span><span class="room-value" id="roomCode">—— ——</span><button id="copyRoom" class="icon-mini" title="Copy room code" aria-label="Copy room code"><svg><use href="#ico-copy"/></svg></button></div>
     <button id="roomButton" class="header-button">Rooms</button><img class="header-corner-logo" src="/assets/branding/logo-128.png" alt="WW2 Royale" width="42" height="42">
   </div>
@@ -51,13 +51,15 @@
     <canvas id="mapCanvas" aria-label="Interactive map of Europe"></canvas><div id="weatherLayer" class="weather-layer" aria-hidden="true"></div><div id="seasonBadge" class="season-badge" aria-live="polite">AUTUMN · 1939</div>
     <nav class="tool-rail" aria-label="Game menus">
       <div class="rail-top"><span class="rail-caption">COMMAND</span></div>
-      <button class="rail-btn" data-panel="army" id="navProvince" title="Army command" aria-label="Open army command" aria-pressed="false"><svg><use href="#ico-map"/></svg><span>Army</span></button>
-      <button class="rail-btn" data-panel="buildings" id="navBuildings" title="Province buildings" aria-label="Open province buildings" aria-pressed="false"><svg><use href="#ico-quick-build"/></svg><span>Buildings</span></button>
-      <button class="rail-btn" data-panel="diplomacy" id="navDiplomacy" title="Diplomacy and alliances" aria-label="Open diplomacy" aria-pressed="false"><svg><use href="#ico-diplomacy"/></svg><span>Diplomacy</span><i id="diplomacyBadge" class="menu-badge" hidden>!</i></button>
-      <button class="rail-btn" data-panel="chat" id="navChat" title="Global and private chat" aria-label="Open chat" aria-pressed="false"><svg><use href="#ico-chat"/></svg><span>Messages</span><i id="chatBadge" class="menu-badge" hidden>!</i></button>
-      <button class="rail-btn" data-panel="orders" title="Moving armies" aria-label="Open army movements" aria-pressed="false"><svg><use href="#ico-orders"/></svg><span>Orders</span></button>
-      <button class="rail-btn" data-panel="rankings" title="World rankings" aria-label="Open rankings" aria-pressed="false"><svg><use href="#ico-ranking"/></svg><span>Rankings</span></button>
-      <button class="rail-btn" data-panel="reports" title="War dispatches" aria-label="Open war dispatches" aria-pressed="false"><svg><use href="#ico-log"/></svg><span>Reports</span></button>
+      <button class="rail-btn" data-panel="army" id="navProvince" title="Army command" aria-label="Open army command" aria-pressed="false"><img class="nav-art" src="/assets/units/army.svg" alt=""><span>Army</span></button>
+      <button class="rail-btn" data-panel="buildings" id="navBuildings" title="Province buildings" aria-label="Open province buildings" aria-pressed="false"><img class="nav-art" src="/assets/units/build.svg" alt=""><span>Buildings</span></button>
+      <button class="rail-btn" data-panel="diplomacy" id="navDiplomacy" title="Diplomacy and alliances" aria-label="Open diplomacy" aria-pressed="false"><img class="nav-art" src="/assets/units/diplomacy.svg" alt=""><span>Diplomacy</span><i id="diplomacyBadge" class="menu-badge" hidden>!</i></button>
+      <button class="rail-btn" data-panel="chat" id="navChat" title="Global and private chat" aria-label="Open chat" aria-pressed="false"><img class="nav-art" src="/assets/units/chat.svg" alt=""><span>Messages</span><i id="chatBadge" class="menu-badge" hidden>!</i></button>
+      <button class="rail-btn" data-panel="orders" title="Moving armies" aria-label="Open army movements" aria-pressed="false"><img class="nav-art" src="/assets/units/orders.svg" alt=""><span>Orders</span></button>
+      <button class="rail-btn" data-panel="rankings" title="World rankings" aria-label="Open rankings" aria-pressed="false"><img class="nav-art" src="/assets/units/rankings.svg" alt=""><span>Rankings</span></button>
+      <button class="rail-btn" data-panel="news" id="navNews" title="Live War Newspaper" aria-label="Open war newspaper" aria-pressed="false"><svg><use href="#ico-log"/></svg><span>News</span><i id="newsBadge" class="menu-badge" hidden>!</i></button>
+      <button class="rail-btn" data-panel="reports" title="Battle reports" aria-label="Open battle reports" aria-pressed="false"><svg><use href="#ico-target"/></svg><span>Battles</span></button>
+      <button class="rail-btn" id="tutorialNav" type="button" title="Guided training" aria-label="Open guided training"><svg><use href="#ico-map"/></svg><span>Training</span></button>
       <span class="rail-spacer"></span>
       <button class="rail-btn" data-panel="settings" title="Map and visibility settings" aria-label="Open settings" aria-pressed="false"><svg><use href="#ico-settings"/></svg><span>Settings</span></button>
     </nav>
@@ -89,11 +91,17 @@
         <section id="panel-chat" class="panel-view" hidden><p class="panel-intro">Communicate with any nation, regardless of diplomatic status.</p><div id="chatMessages" class="chat-messages" aria-live="polite"></div><form id="chatForm" class="chat-form"><label for="chatRecipient" class="field-label">RECIPIENT</label><select id="chatRecipient" class="wide-input"><option value="all">All nations</option></select><div class="chat-compose"><input id="chatInput" maxlength="280" placeholder="Write your message…" autocomplete="off" aria-label="Chat message"><button type="submit">Send <svg><use href="#ico-chevron"/></svg></button></div></form></section>
         <section id="panel-orders" class="panel-view" hidden><p class="panel-intro">Track your deployed forces and their estimated arrival times.</p><div id="redirectHint" class="hint-card" hidden></div><div id="movementOrders" class="movement-orders"></div></section>
         <section id="panel-rankings" class="panel-view" hidden><p class="panel-intro">Global ranking is based on territories (50%), money (25%) and attack potential (25%).</p><div id="leaderboard" class="leaderboard"></div><div class="victory-rules"><strong>VICTORY CONDITIONS</strong><span>Solo: control 51% of provinces</span><span>With ally: control 67% together</span></div></section>
-        <section id="panel-reports" class="panel-view" hidden><p class="panel-intro">Recent combat, diplomacy, and construction activity across Europe.</p><div id="warLog" class="warlog"></div></section>
-        <section id="panel-settings" class="panel-view" hidden><p class="panel-intro">Control strategic map overlays and movement notifications.</p><div class="settings-check"><label><input id="showAlly" type="checkbox" checked><span><strong>Show allied movements</strong><small>Display movement routes of allied armies</small></span></label><label><input id="showHostile" type="checkbox" checked><span><strong>Show incoming attacks</strong><small>Hostile movement appears in the final 20 seconds</small></span></label><label><input id="labelsMode" type="checkbox" checked><span><strong>Show nation labels</strong><small>Dynamic diplomacy-coloured names across the map</small></span></label></div><div class="settings-actions"><span class="eyebrow">IDENTITY</span><div class="identity-row"><span id="myFlag" class="flag"></span><strong id="myNation">Spectator</strong></div><button id="changeNation" class="subtle-button">Choose nation</button></div></section>
+        <section id="panel-news" class="panel-view" hidden>
+          <div class="newspaper-masthead"><span class="news-ribbon">EUROPE · LIVE DISPATCHES</span><h3>THE WAR CHRONICLE</h3><span>Every battle changes history</span></div>
+          <p class="panel-intro">Public headlines on major battles, diplomacy and capital changes. Unit counts remain classified.</p>
+          <form id="warStatementForm" class="war-statement-form"><label for="warStatementText" class="field-label">COMMANDER STATEMENT · 160 CHARACTERS</label><textarea id="warStatementText" maxlength="160" rows="2" placeholder="Address the nations of Europe…" aria-label="Public commander statement"></textarea><button type="submit" class="secondary-button">Publish Statement</button><small>Public to all commanders · One statement every 90 seconds · No links</small></form><div id="warNewsList" class="war-news-list" aria-live="polite"></div>
+        </section>
+        <section id="panel-reports" class="panel-view" hidden><p class="panel-intro">After-action intelligence from battles involving your nation. Casualties are not shared with neutral observers.</p><div id="battleReportList" class="battle-report-list"></div><details class="warlog-history"><summary>Command activity log</summary><div id="warLog" class="warlog"></div></details></section>
+        <section id="panel-settings" class="panel-view" hidden><p class="panel-intro">Control strategic map overlays and movement notifications.</p><div class="settings-check"><label><input id="showAlly" type="checkbox" checked><span><strong>Show allied movements</strong><small>Display movement routes of allied armies</small></span></label><label><input id="showHostile" type="checkbox" checked><span><strong>Show incoming attacks</strong><small>Hostile movement appears in the final 20 seconds</small></span></label><label><input id="showBattleFx" type="checkbox" checked><span><strong>Battle effects</strong><small>Show brief impacts and naval splashes after combat</small></span></label><label><input id="labelsMode" type="checkbox" checked><span><strong>Show nation labels</strong><small>Dynamic diplomacy-coloured names across the map</small></span></label></div><div class="settings-actions"><span class="eyebrow">IDENTITY</span><div id="traitIdentity" class="trait-identity"></div><div class="identity-row"><span id="myFlag" class="flag"></span><strong id="myNation">Spectator</strong></div><button id="changeNation" class="subtle-button">Choose nation</button></div></section>
       </div>
     </div>
     <section id="orderPlanner" class="order-planner" aria-label="Select troops for army order" hidden>
+      <div id="plannerCaption" class="planner-caption">Select your units, then tap a destination province.</div>
       <h3 id="plannerTitle" class="planner-visually-hidden">Move army</h3>
       <span id="plannerSource" class="planner-visually-hidden">—</span>
       <p id="plannerInstructions" class="planner-visually-hidden">Choose your troops and click a destination.</p>
@@ -101,34 +109,49 @@
         <div class="army-preset-bar planner-visually-hidden"><span>DEPLOYMENT <small>100% selected by default</small></span><div><button type="button" id="armySelectAll">All</button><button type="button" id="armySelectNone">Clear</button></div></div>
         <div class="army-composer planner-composer">
           <div class="unit-pick">
-            <label for="armyInfantry" title="Infantry · 15 seconds per province" aria-label="Infantry" class="planner-unit-symbol"><svg aria-hidden="true"><use href="#ico-users"/></svg><span class="planner-visually-hidden">Infantry</span></label>
+            <label for="armyInfantry" title="Infantry · 11 seconds per province" class="planner-unit-symbol"><img src="/assets/units/infantry.svg" alt=""/><span>Infantry</span></label>
             <input id="armyInfantry" type="range" min="0" max="0" step="1" value="0" aria-label="Infantry to send">
             <output id="armyInfantryValue" for="armyInfantry">0</output>
             <span id="availableInfantry" class="planner-visually-hidden">0 available</span>
           </div>
           <div class="unit-pick">
-            <label for="armyTank" title="Tanks · 30 seconds per province" aria-label="Tanks" class="planner-unit-symbol"><svg aria-hidden="true"><use href="#ico-tank"/></svg><span class="planner-visually-hidden">Tanks</span></label>
+            <label for="armyTank" title="Tanks · 20 seconds per province" class="planner-unit-symbol"><img src="/assets/units/tank.svg" alt=""/><span>Tanks</span></label>
             <input id="armyTank" type="range" min="0" max="0" step="1" value="0" aria-label="Tanks to send">
             <output id="armyTankValue" for="armyTank">0</output>
             <span id="availableTank" class="planner-visually-hidden">0 available</span>
           </div>
           <div class="unit-pick">
-            <label for="armyBomber" title="Bombers · 10.5 seconds per province" aria-label="Bombers" class="planner-unit-symbol"><svg aria-hidden="true"><use href="#ico-airport"/></svg><span class="planner-visually-hidden">Bombers</span></label>
+            <label for="armyBomber" title="Bombers · 8.5 seconds per province" class="planner-unit-symbol"><img src="/assets/units/bomber.svg" alt=""/><span>Bombers</span></label>
             <input id="armyBomber" type="range" min="0" max="0" step="1" value="0" aria-label="Bombers to send">
             <output id="armyBomberValue" for="armyBomber">0</output>
             <span id="availableBomber" class="planner-visually-hidden">0 available</span>
           </div>
         </div>
+        <fieldset id="arrivalChoice" class="arrival-choice" hidden><legend>Arrival timing</legend>
+          <label><input type="radio" name="arrivalMode" value="separate" checked><span>Arrive separately</span></label>
+          <label><input type="radio" name="arrivalMode" value="together"><span>Arrive together</span></label>
+        </fieldset>
         <div id="destinationCard" class="planner-visually-hidden" hidden><strong id="destinationName">—</strong><span id="destinationRelation">—</span></div>
         <div id="orderHint" class="planner-visually-hidden" role="status">Select destination on the map.</div>
         <button id="clearDestination" class="planner-visually-hidden" type="button" hidden>Choose a different target</button>
         <button id="plannerCancel" class="planner-visually-hidden" type="button">Cancel order</button>
       </div>
     </section>
+    <button id="selectMoreBtn" type="button" class="select-more-btn" hidden><img src="/assets/units/multi.svg" alt=""><span id="selectMoreLabel">Select more</span></button>
+    <button id="cancelNaval" class="cancel-naval" type="button" hidden>Cancel fleet order</button><section id="movingArmyPanel" class="moving-army-panel" hidden aria-label="Moving army commands">
+      <div class="moving-army-header"><img src="/assets/units/infantry.svg" id="movingArmyIcon" alt="Army"><strong id="movingArmySummary">Army moving</strong><button id="closeMovingArmy" aria-label="Close moving army controls" type="button">×</button></div>
+      <p id="movingArmyInstruction">Choose what to do with this moving army.</p>
+      <div class="moving-army-actions" id="movingArmyActions">
+        <button id="movingArmyMove" type="button">Move</button>
+        <button id="movingArmyRetreat" type="button">Retreat</button>
+        <button id="movingArmyConfirm" type="button" hidden>Confirm new route</button>
+        <button id="movingArmyCancel" type="button" hidden>Cancel</button>
+      </div>
+    </section>
     <div id="quickCommand" class="quick-command" hidden aria-label="Province quick actions">
-      <button id="quickAttack" class="quick-action quick-action-attack" type="button" title="Attack — choose a destination" aria-label="Attack with selected troops"><svg aria-hidden="true"><use href="#ico-quick-attack"/></svg><span>Attack</span></button>
-      <button id="quickMove" class="quick-action quick-action-move" type="button" title="Move — choose a destination" aria-label="Move selected troops"><svg aria-hidden="true"><use href="#ico-quick-move"/></svg><span>Move</span></button>
-      <button id="quickBuild" class="quick-action quick-action-build" type="button" title="Open province construction" aria-label="Open buildings in selected province"><svg aria-hidden="true"><use href="#ico-quick-build"/></svg><span>Build</span></button>
+      <button id="quickAttack" class="quick-action quick-action-attack" type="button" title="Attack — choose a destination" aria-label="Attack with selected troops"><img class="action-art" src="/assets/units/attack.svg" alt=""><span>Attack</span></button>
+      <button id="quickMove" class="quick-action quick-action-move" type="button" title="Move — choose a destination" aria-label="Move selected troops"><img class="action-art" src="/assets/units/move.svg" alt=""><span>Move</span></button>
+      <button id="quickBuild" class="quick-action quick-action-build" type="button" title="Open province construction" aria-label="Open buildings in selected province"><img class="action-art" src="/assets/units/build.svg" alt=""><span>Build</span></button>
       <button id="confirmOrderBtn" class="quick-action quick-action-confirm" type="button" hidden><svg aria-hidden="true"><use href="#ico-target"/></svg><span>Confirm</span></button>
       <button id="cancelOrderBtn" class="quick-action quick-action-cancel" type="button" hidden><svg aria-hidden="true"><use href="#ico-close"/></svg><span>Cancel</span></button>
     </div>
@@ -140,13 +163,25 @@
       <div class="province-info-head"><img id="intelNationFlag" class="intel-nation-flag" src="/assets/flags/GB.svg" alt="Nation flag"><strong id="intelProvince">—</strong><span id="intelRelation">—</span></div>
       <div id="intelDetails" class="province-info-data"></div>
     </section>
+    <div id="capitalBanner" class="capital-banner" role="status" aria-live="polite" hidden><span class="capital-banner-kicker">BREAKING WAR NEWS</span><strong id="capitalBannerTitle">A CAPITAL HAS FALLEN</strong><span id="capitalBannerDetail">The balance of power has changed</span></div>
     <div id="hoverTip" class="hover-tip" hidden></div><div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="false"></div><div id="floatingToast" class="toast" role="status" hidden></div>
   </section>
 </main>
 <!-- Dedicated server lobby. Join codes cannot accidentally create new rooms. -->
-<div id="joinModal" class="backdrop"><div class="modal lobby-modal"><img class="lobby-brand-logo" src="/assets/branding/logo-640.png" alt="WW2 Royale" width="360" height="310"><span class="eyebrow">WELCOME TO THE FRONT</span><h1>COMMAND EUROPE</h1><p>Create a private war room or join friends with a six-digit server code. Each room hosts its own live multiplayer war.</p><div class="lobby-grid"><div class="lobby-choice"><span class="eyebrow">01 / NEW WAR</span><h3>Lead a new war</h3><p>Generate a unique six-digit code and invite up to eight other players.</p><button class="primary-button" id="createRoom" type="button">Create new server <svg><use href="#ico-chevron"/></svg></button></div><div class="lobby-choice"><span class="eyebrow">02 / EXISTING WAR</span><h3>Join a server</h3><p>Enter the six-digit code shared by the host.</p><form id="joinForm"><label for="roomInput" class="field-label">SERVER CODE</label><input id="roomInput" placeholder="000000" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" required autocomplete="one-time-code"><button type="submit" class="secondary-button">Join war <svg><use href="#ico-chevron"/></svg></button></form></div><div class="lobby-choice public-choice"><span class="eyebrow">03 / PUBLIC MATCHMAKING</span><h3>Quick Match</h3><p>Join a nine-player public match. Choose an available nation or pick randomly. The war begins once six commanders have chosen nations, and quick match can still fill open seats during the first minute.</p><div class="quick-status">9 nations · starts at 6 · up to 9 commanders</div><button class="primary-button" id="joinRandom" type="button">Join random server <svg><use href="#ico-chevron"/></svg></button></div></div><button id="returnGame" class="subtle-button full" hidden>Return to current war</button><div id="joinError" class="form-error" role="alert" hidden></div><small>No account required · War begins 6 October 1939 · 1 in-game year every 20 minutes</small></div></div>
+<div id="joinModal" class="backdrop"><div class="modal lobby-modal"><img class="lobby-brand-logo" src="/assets/branding/logo-640.png" alt="WW2 Royale" width="360" height="310"><span class="eyebrow">WELCOME TO THE FRONT</span><h1>COMMAND EUROPE</h1><p>Create a private war room or join friends with a six-digit server code. Each room hosts its own live multiplayer war.</p><div class="player-name-row"><label for="playerNameInput">YOUR COMMANDER NAME</label><input id="playerNameInput" type="text" maxlength="20" minlength="2" autocomplete="nickname" placeholder="Enter your username" aria-label="Your username"></div><div class="training-invite"><div><strong>New Commander?</strong><span>Learn the basics in a private guided practice scenario.</span></div><button type="button" id="tutorialLaunch" class="secondary-button">Start Training</button></div><div class="lobby-grid"><div class="lobby-choice"><span class="eyebrow">01 / NEW WAR</span><h3>Lead a new war</h3><p>Generate a unique six-digit code and invite up to eight other players.</p><button class="primary-button" id="createRoom" type="button">Create new server <svg><use href="#ico-chevron"/></svg></button></div><div class="lobby-choice"><span class="eyebrow">02 / EXISTING WAR</span><h3>Join a server</h3><p>Enter the six-digit code shared by the host.</p><form id="joinForm"><label for="roomInput" class="field-label">SERVER CODE</label><input id="roomInput" placeholder="000000" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" required autocomplete="one-time-code"><button type="submit" class="secondary-button">Join war <svg><use href="#ico-chevron"/></svg></button></form></div><div class="lobby-choice public-choice"><span class="eyebrow">03 / PUBLIC MATCHMAKING</span><h3>Quick Match</h3><p>Join a nine-player public match. Choose an available nation or pick randomly. The war begins once six commanders have chosen nations, and quick match can still fill open seats during the first minute.</p><div class="quick-status">9 nations · starts at 6 · up to 9 commanders</div><button class="primary-button" id="joinRandom" type="button">Join random server <svg><use href="#ico-chevron"/></svg></button></div></div><button id="returnGame" class="subtle-button full" hidden>Return to current war</button><div id="joinError" class="form-error" role="alert" hidden></div><small>No account required · War begins 6 October 1939 · Match calendar: 6 Oct 1939–2 Sep 1945 · Public matches last 60 minutes</small></div></div>
 <div id="publicWaiting" class="backdrop" hidden><div class="modal"><div class="modal-emblem">⌛</div><span class="eyebrow">PUBLIC MATCHMAKING</span><h1>ASSEMBLING COMMANDERS</h1><p id="waitingCount">Waiting for players…</p><div class="waiting-track"><div id="waitingBar"></div></div><p class="waiting-details" id="waitingNation">Choose a nation in the selection window.</p><button id="leaveQueue" class="subtle-button full">Leave matchmaking</button></div></div>
-<div id="nationModal" class="backdrop" hidden><div class="modal choose-modal"><div class="modal-emblem">⚔</div><span class="eyebrow">WAR ROOM</span><h1>CHOOSE YOUR NATION</h1><p>One commander per nation. Choose an available country or select Pick Random. Public games begin once all eight nations are filled.</p><div class="lobby-code-copy">ROOM CODE <b id="lobbyRoomCode">—</b> <button id="copyLobbyCode" class="subtle-button">Copy invite code</button></div><div id="nationChoices" class="nation-choices"></div><button id="spectateButton" class="subtle-button full">Spectate the war</button></div></div>
+<div id="nationModal" class="backdrop" hidden><div class="modal choose-modal"><div class="modal-emblem">⚔</div><span class="eyebrow">WAR ROOM</span><h1>CHOOSE YOUR NATION</h1><p>One commander per nation. Choose an available country or select Pick Random. Public games start once six of nine nations have commanders.</p><div class="lobby-code-copy">ROOM CODE <b id="lobbyRoomCode">—</b> <button id="copyLobbyCode" class="subtle-button">Copy invite code</button></div><div id="nationChoices" class="nation-choices"></div><button id="spectateButton" class="subtle-button full">Spectate the war</button></div></div>
 <div id="confirmModal" class="backdrop" hidden><div class="modal confirmation-modal"><div class="modal-emblem">⚔</div><span class="eyebrow">MILITARY ORDER</span><h1>CONFIRM ATTACK</h1><p id="confirmDetails"></p><div class="confirm-buttons"><button class="primary-button" id="confirmYes">Launch attack</button><button class="subtle-button" id="confirmNo">Cancel</button></div></div></div>
 <div id="victoryModal" class="backdrop" hidden><div class="modal"><div class="modal-emblem">★</div><span class="eyebrow">WAR CONCLUDED</span><h1 id="winnerName">VICTORY</h1><p id="victoryDescription">Victory requires control of 51% of provinces alone or 67% with an ally.</p><button id="restartButton" class="primary-button">Return to main menu</button></div></div>
+<div id="tutorialModal" class="backdrop tutorial-backdrop" hidden>
+  <section class="modal tutorial-modal" role="dialog" aria-modal="true" aria-labelledby="tutorialHeading">
+    <div class="tutorial-top"><span class="eyebrow">WW2 ROYALE · OFFLINE TRAINING</span><button id="tutorialClose" class="panel-close" aria-label="Close tutorial">×</button></div>
+    <div class="tutorial-progress"><div id="tutorialProgressFill"></div></div>
+    <span id="tutorialStepCount" class="eyebrow">LESSON 1 / 5</span>
+    <h2 id="tutorialHeading">Take command</h2><p id="tutorialText" class="tutorial-text">Practice military orders in a simulated battle.</p>
+    <div class="tutorial-field" aria-label="Practice battle map"><div class="training-province training-paris"><span>PARIS</span><b id="trainingParisCount">25</b></div><div class="training-province training-lyon"><span>LYON</span><b id="trainingLyonCount">15</b></div><div class="training-province training-strasbourg"><span>STRASBOURG</span><b id="trainingStrasCount">20</b></div></div>
+    <div id="tutorialFeedback" class="tutorial-feedback">No live multiplayer state will be changed.</div>
+    <div class="tutorial-actions"><button id="tutorialSkip" type="button" class="subtle-button">Exit training</button><button id="tutorialAction" type="button" class="primary-button">Choose France</button></div>
+  </section>
+</div>
 </body></html>

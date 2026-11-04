@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-<g fill="#c7c1ad" stroke="#3a3f46" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
-<ellipse cx="64" cy="44" rx="28" ry="36" fill="#ddd4bd"/>
-<path d="M50 76l14 14 14-14" fill="#cbbf9e"/>
-<path d="M64 90v14M54 90l-10 15m30-15 10 15" fill="none"/>
-<rect x="48" y="104" width="32" height="12" rx="3" fill="#7c674d"/>
-</g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs>
+<linearGradient id="iron" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ebebd9"/><stop offset=".4" stop-color="#8b9e9e"/><stop offset="1" stop-color="#303d45"/></linearGradient>
+<linearGradient id="olive" x1="0" y1="0" x2=".7" y2="1"><stop stop-color="#e1e5b5"/><stop offset=".4" stop-color="#788e61"/><stop offset="1" stop-color="#283d33"/></linearGradient>
+<linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff2b1"/><stop offset=".55" stop-color="#c49a49"/><stop offset="1" stop-color="#694b22"/></linearGradient>
+<linearGradient id="red" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffbca6"/><stop offset=".6" stop-color="#c04435"/><stop offset="1" stop-color="#5c1d1c"/></linearGradient>
+<linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#b7e4ff"/><stop offset=".58" stop-color="#4d91bd"/><stop offset="1" stop-color="#254566"/></linearGradient>
+<filter id="shade" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2"/></filter></defs><g stroke="#26312b" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"><path d="M65 9q-37 0-37 43 0 34 37 48 37-14 37-48Q102 9 65 9z" fill="url(#gold)"/><path d="M65 10v89m-30-61h60" fill="none" stroke="url(#iron)" stroke-width="4"/><path d="M53 98l-4 14h32l-4-14" fill="url(#olive)"/></g></svg>

@@ -4,7 +4,8 @@ import {createReadStream,readFileSync,statSync} from 'node:fs';
 import {createHash,randomUUID,randomInt} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
-import {createGame,relation,ally,changeDiplomacy,orderMovement,changeMovement,build,buyUnit,stationBalloon,sendChat,tick,viewFor} from './game.js';
+import {publishCommanderStatement} from './war-events.js';
+import {createGame,relation,ally,changeDiplomacy,orderMovement,orderMultiple,changeMovement,build,buyUnit,commissionShip,sailFleet,stationBalloon,recallBalloon,sendChat,tick,viewFor,PUBLIC_MATCH_MS} from './game.js';
 const map=JSON.parse(readFileSync(new URL('../shared/map.json',import.meta.url),'utf8'));
 const clientPath=path.resolve(fileURLToPath(new URL('../client/',import.meta.url)));
 const rooms=new Map(),connections=new Map();
@@ -39,7 +40,9 @@ function publicSlotsRemaining(room){return Math.max(0,PUBLIC_MAX_PLAYERS-active(
 function sendSnapshot(client){
   const room=rooms.get(client.room);if(!room)return;
   const nation=nationOf(room,client);const state=viewFor(room.g,nation,Date.now(),room.prefs.get(client.id));
-  state.code=room.code;state.playableNations=map.playableNations;state.public=room.public;state.started=room.started;state.playerCount=room.public?active(room).length:room.players.size;state.occupied=[...room.players.values()];send(client.id,'state',state);
+  state.code=room.code;state.playableNations=map.playableNations;state.public=room.public;state.started=room.started;state.playerCount=room.public?active(room).length:room.players.size;state.occupied=[...room.players.values()];
+  state.commanders=Object.fromEntries([...room.players].map(([id,n])=>[n,connections.get(id)?.username||'Commander']));
+  send(client.id,'state',state);
 }
 function broadcast(room){for(const client of active(room))sendSnapshot(client);}
 function leave(client){
@@ -51,7 +54,7 @@ function leave(client){
 function maybeStartPublic(room){
   if(room.public&&!room.started&&room.players.size>=PUBLIC_MIN_PLAYERS&&active(room).length>=PUBLIC_MIN_PLAYERS){
     room.started=true;
-    const now=Date.now();room.g.lastTick=now;room.g.campaignStartAt=now;
+    const now=Date.now();room.g.lastTick=now;room.g.campaignStartAt=now;room.g.timeLimitMs=PUBLIC_MATCH_MS;
     // Production is purchase-based; no automatic troop timers to reset.
   }
 }
@@ -66,6 +69,12 @@ function chooseAvailableNation(room,client,data){
   send(client.id,'assigned',{nation:data});broadcast(room);
 }
 function guardRoom(client,type,data){
+  if(type==='setUsername'){
+    if(typeof data!=='string')return respond(client,'Enter a valid username.');
+    const name=data.trim().replace(/[<>\x00-\x1f]/g,'').slice(0,20);
+    if(name.length<2)return respond(client,'Username must be at least 2 characters.');
+    client.username=name;const room=rooms.get(client.room);if(room)broadcast(room);return;
+  }
   if(type==='leaveRoom'){leave(client);send(client.id,'leftRoom',{});return;}
   if(type==='joinRandom'){
     if(client.room)leave(client);
@@ -132,6 +141,12 @@ function guardRoom(client,type,data){
     if(!room.g.winner)return respond(client,'Campaign is still running.');
     room.g=createGame(map);broadcast(room);return;
   }
+  if(type==='publishStatement'){
+    try{const item=publishCommanderStatement(room.g,nation,data,now);
+      send(client.id,'statementAccepted',{id:item.id});broadcast(room);
+    }catch(e){respond(client,e.message||'Statement rejected.');}
+    return;
+  }
   if(type==='chat'){
     if(now-(room.lastAction.get(client.id+':chat')||0)<750)return respond(client,'Slow down: one chat message per 750 ms.');
     try{sendChat(room.g,nation,data,now);room.lastAction.set(client.id+':chat',now);broadcast(room);}catch(e){respond(client,e.message);}return;
@@ -148,17 +163,39 @@ function guardRoom(client,type,data){
       if(!data||typeof data!=='object'||!Number.isSafeInteger(data.province))throw Error('Invalid construction command.');
       const structure=build(room.g,nation,data.province,data.kind,now);send(client.id,'buildAccepted',{province:data.province,kind:data.kind,level:structure.buildings[data.kind]});broadcast(room);return;
     }
+    if(type==='buyShip'){
+      if(!data||typeof data!=='object')throw Error('Invalid ship purchase.');
+      const result=commissionShip(room.g,nation,data.province,data.type,data.amount);
+      send(client.id,'purchaseAccepted',result);broadcast(room);return;
+    }
+    if(type==='sailFleet'){
+      if(!data||typeof data!=='object')throw Error('Invalid naval deployment.');
+      const fleet=sailFleet(room.g,nation,data,now);
+      send(client.id,'orderAccepted',{id:fleet.id,arrivalAt:fleet.arrivalAt,naval:true});broadcast(room);return;
+    }
     if(type==='buyUnit'){
       if(!data||typeof data!=='object'||!Number.isSafeInteger(data.province))throw Error('Invalid troop purchase.');
       const purchase=buyUnit(room.g,nation,data.province,data.type,data.amount);send(client.id,'purchaseAccepted',purchase);broadcast(room);return;
     }
     if(type==='stationBalloon'){
       if(!data||!Number.isSafeInteger(data.id)||!Number.isSafeInteger(data.province))throw Error('Invalid spy balloon order.');
-      stationBalloon(room.g,nation,data.id,data.province);broadcast(room);return;
+      const balloon=stationBalloon(room.g,nation,data.id,data.province,now);
+      send(client.id,'orderAccepted',{id:balloon.id,arrivalAt:balloon.movement.arrivalAt,spy:true});
+      broadcast(room);return;
+    }
+    if(type==='recallBalloon'){
+      if(!data||!Number.isSafeInteger(data.id))throw Error('Invalid spy balloon recall.');
+      recallBalloon(room.g,nation,data.id,now);broadcast(room);return;
     }
     if(type==='changeMovement'){
       if(!data||typeof data!=='object')throw Error('Invalid movement change.');
       changeMovement(room.g,nation,data,now);broadcast(room);return;
+    }
+    if(type==='moveGroup'){
+      if(!data||typeof data!=='object')throw Error('Invalid coordinated movement command.');
+      const orders=orderMultiple(room.g,nation,data,now);
+      send(client.id,'orderAccepted',{ids:orders.map(o=>o.id),arrivalAt:Math.max(...orders.map(o=>o.arrivalAt)),count:orders.length});
+      broadcast(room);return;
     }
     if(type==='move'){
       if(!data||typeof data!=='object')throw Error('Invalid movement command.');
@@ -211,7 +248,7 @@ server.on('upgrade',(req,socket,head)=>{
   const key=req.headers['sec-websocket-key'];if(typeof key!=='string'||!/^[-\w+/=]{20,32}$/.test(key)){socket.destroy();return;}
   const accept=createHash('sha1').update(key+GUID).digest('base64');
   socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: '+accept+'\r\n\r\n');
-  const id=randomUUID(),client={id,socket,room:null,buffer:Buffer.alloc(0)};connections.set(id,client);
+  const id=randomUUID(),client={id,socket,room:null,username:'Commander',buffer:Buffer.alloc(0)};connections.set(id,client);
   socket.on('data',data=>onData(client,data));socket.on('close',()=>{leave(client);connections.delete(id);});socket.on('error',()=>socket.destroy());
   if(head.length)onData(client,head);
 });

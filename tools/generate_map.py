@@ -291,6 +291,128 @@ for code in playable + non_playable:
         province[subset[:, 1], subset[:, 0]] = pid
         meta.append({'id': pid, 'nation': code, 'local': i + 1})
 
+# WW2 Royale 1.20: make the historical northern Romania/Soviet boundary
+# less like a ruler-straight cut. Relabel ONLY within the existing two-country
+# union; do not move the coast or make empty land-mask pixels.
+su_ids=[m['id'] for m in meta if m['nation']=='SU']
+ro_ids=[m['id'] for m in meta if m['nation']=='RO']
+land_SU=np.isin(province,su_ids)
+land_RO=np.isin(province,ro_ids)
+united=land_SU|land_RO
+pre_warp=province.copy()
+for x in range(1160,min(w,1515)):
+    touches=np.where((land_SU[:-1,x]&land_RO[1:,x])|(land_RO[:-1,x]&land_SU[1:,x]))[0]
+    touches=touches[(touches>365)&(touches<570)]
+    if not len(touches): continue
+    edge_y=int(np.median(touches))
+    shift=10*np.sin((x-1160)/17)+5*np.sin((x-1160)/5.2)+3*np.sin((x-1160)/2.8)
+    for y in range(max(edge_y-30,350),min(edge_y+31,h)):
+        if not united[y,x]:continue
+        fade=max(0,(30-abs(y-edge_y))/30)
+        sy=int(round(y+shift*fade))
+        if 0<=sy<h and united[sy,x]:province[y,x]=pre_warp[sy,x]
+
+
+# Organic atlas-style province refinement: gently curve *internal* province borders
+# without changing the overall map silhouette, country ownership, or province count.
+# We only remap pixels well inside each country's existing mask, which keeps coastlines
+# and national borders stable while making province-to-province edges look less geometric.
+def organicise_internal_borders(province, meta):
+    out = province.copy()
+    nation_to_ids = {}
+    for m in meta:
+        nation_to_ids.setdefault(m['nation'], []).append(m['id'])
+    focus_codes = ['PT','ES','FR','GB','IE','DE','NL','BE','DK','CH','IT','HU','RO','SU','SK','YU','BG']
+    for code in focus_codes:
+        ids_here = np.array(nation_to_ids.get(code, []), dtype=np.uint8)
+        if len(ids_here) < 2:
+            continue
+        mask = np.isin(out, ids_here)
+        if mask.sum() < 1200:
+            continue
+        ys, xs = np.where(mask)
+        pad = 18
+        x0 = max(int(xs.min()) - pad, 0)
+        x1 = min(int(xs.max()) + pad + 1, w)
+        y0 = max(int(ys.min()) - pad, 0)
+        y1 = min(int(ys.max()) + pad + 1, h)
+        sub = out[y0:y1, x0:x1].copy()
+        submask = mask[y0:y1, x0:x1]
+        subh, subw = sub.shape
+        # Smooth low-frequency displacement field. Larger countries get slightly more motion.
+        area = int(submask.sum())
+        amp = float(np.clip(np.sqrt(area) / 55.0, 3.0, 8.5))
+        sigma = float(np.clip(min(subw, subh) / 17.0, 5.5, 14.0))
+        seed = 1939 + sum((i + 1) * ord(ch) for i, ch in enumerate(code))
+        local_rng = np.random.default_rng(seed)
+        low_h = max(3, subh // 80)
+        low_w = max(3, subw // 80)
+        noise_x = local_rng.normal(size=(low_h, low_w)).astype(np.float32)
+        noise_y = local_rng.normal(size=(low_h, low_w)).astype(np.float32)
+        dx = cv2.resize(noise_x, (subw, subh), interpolation=cv2.INTER_CUBIC)
+        dy = cv2.resize(noise_y, (subw, subh), interpolation=cv2.INTER_CUBIC)
+        dx = cv2.GaussianBlur(dx, (0, 0), sigma) * amp
+        dy = cv2.GaussianBlur(dy, (0, 0), sigma) * amp
+        # Modulate the field so the effect fades near outer country borders.
+        dist = cv2.distanceTransform((submask.astype(np.uint8) * 255), cv2.DIST_L2, 5)
+        hold = float(np.clip(np.sqrt(area) / 18.0, 7.0, 13.0))
+        fade = np.clip((dist - hold) / max(hold, 1.0), 0.0, 1.0)
+        fade = cv2.GaussianBlur(fade.astype(np.float32), (0, 0), 1.6)
+        yy, xx = np.meshgrid(np.arange(subh, dtype=np.float32), np.arange(subw, dtype=np.float32), indexing='ij')
+        map_x = np.clip(xx + dx * fade, 0, subw - 1).astype(np.float32)
+        map_y = np.clip(yy + dy * fade, 0, subh - 1).astype(np.float32)
+        remapped = cv2.remap(sub, map_x, map_y, cv2.INTER_NEAREST, borderMode=cv2.BORDER_REPLICATE)
+        valid = submask & np.isin(remapped, ids_here)
+        change = valid & (dist > hold)
+        sub_out = out[y0:y1, x0:x1].copy()
+        sub_out[change] = remapped[change]
+        # Fill any tiny accidental voids or pinholes by borrowing the local majority province.
+        for _ in range(2):
+            missing = submask & ~np.isin(sub_out, ids_here)
+            if not missing.any():
+                break
+            dil = cv2.dilate(missing.astype(np.uint8), np.ones((3, 3), np.uint8), iterations=1) > 0
+            neigh = sub_out.copy()
+            ys2, xs2 = np.where(missing)
+            for yy2, xx2 in zip(ys2, xs2):
+                yA = max(yy2 - 1, 0); yB = min(yy2 + 2, subh)
+                xA = max(xx2 - 1, 0); xB = min(xx2 + 2, subw)
+                vals = sub_out[yA:yB, xA:xB]
+                vals = vals[np.isin(vals, ids_here)]
+                if vals.size:
+                    uniq, counts = np.unique(vals, return_counts=True)
+                    neigh[yy2, xx2] = uniq[np.argmax(counts)]
+            sub_out = neigh
+        out[y0:y1, x0:x1] = np.where(submask, sub_out, out[y0:y1, x0:x1])
+    return out
+
+province = organicise_internal_borders(province, meta)
+
+# One cleanup pass: majority-vote only on interior province pixels, to reduce ruler-straight
+# runs while keeping every shared boundary perfectly closed.
+for code in ['PT','ES','FR','GB','DE','IT','HU','RO','SU','SK','YU','BG']:
+    ids_here = np.array([m['id'] for m in meta if m['nation'] == code], dtype=np.uint8)
+    if len(ids_here) < 2:
+        continue
+    mask = np.isin(province, ids_here)
+    dist = cv2.distanceTransform((mask.astype(np.uint8) * 255), cv2.DIST_L2, 5)
+    inner = mask & (dist > 10)
+    ys, xs = np.where(inner)
+    # Only touch a sparse checkerboard of pixels to avoid over-smoothing or province loss.
+    for y, x in zip(ys, xs):
+        if ((x + y) & 1) != 0:
+            continue
+        y0 = max(y - 1, 0); y1 = min(y + 2, h)
+        x0 = max(x - 1, 0); x1 = min(x + 2, w)
+        vals = province[y0:y1, x0:x1]
+        vals = vals[np.isin(vals, ids_here)]
+        if vals.size < 5:
+            continue
+        uniq, counts = np.unique(vals, return_counts=True)
+        top = uniq[np.argmax(counts)]
+        if counts.max() >= 5:
+            province[y, x] = top
+
 # Neighbor detection.
 neighbor = {i: set() for i in range(1, province_count + 1)}
 for axis in (0, 1):
@@ -326,7 +448,9 @@ for m in meta:
         path = cv2.approxPolyDP(contour, 1.8, True).reshape(-1, 2).tolist()
         if len(path) > 2:
             paths.append(path)
-    provinces.append({'id': m['id'], 'name': f'{name[m["nation"]]} {m["local"]:02}', 'nation': m['nation'], 'x': cx, 'y': cy, 'area': len(xs), 'troops': 25, 'neighbors': sorted(neighbor[m['id']]), 'paths': paths})
+    coast_touch = cv2.dilate(p.astype(np.uint8), np.ones((3, 3), np.uint8), iterations=1) > 0
+    coastal = bool(np.any(coast_touch & sea))
+    provinces.append({'id': m['id'], 'name': f'{name[m["nation"]]} {m["local"]:02}', 'nation': m['nation'], 'x': cx, 'y': cy, 'area': len(xs), 'troops': 25, 'neighbors': sorted(neighbor[m['id']]), 'paths': paths, 'coastal': coastal})
 
 # Assign historical province names by matching centroids to regional anchors.
 for code, anchors in province_name_anchors.items():
@@ -410,8 +534,9 @@ mapdata = {
     'width': w,
     'height': h,
     'startDate': '1939-10-06',
-    'secondsPerYear': 1200,
-    'secondsPerDay': 1200/365,  # nominal only; server uses exact anniversary lengths
+    'endDate': '1945-09-02',
+    'secondsPerMatch': 3600,
+    'secondsPerDay': 3600/2158,  # 60-min match from Oct 1939 to Sep 1945
     'playableNations': playable,
     'nations': {c: {'id': c, 'name': name[c], 'color': colour[c], 'playable': c in playable, 'capital': province_name_anchors[c][0][0]} for c in ids},
     'provinces': provinces,
